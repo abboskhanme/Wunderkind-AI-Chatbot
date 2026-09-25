@@ -1,6 +1,9 @@
-"""Telegram side of the funnel (SPEC §10.1): /start deep links, the collection
-state machine (name → phone → grade → PDF), the channel gate, /stop and keyword
-comments in the channel's discussion group.
+"""Telegram side of the funnels (SPEC §10.1, §11.2): /start deep links, the
+collection state machine (name → phone → grade → PDF), the channel gate, /stop
+and keyword comments in the channel's discussion group.
+
+One person may be in several funnels (one entry each). Text answers go to their
+*current* entry — the most recently touched one still asking questions.
 
 Entry point: `claim_update()` is called by the Telegram webhook before the menu
 and the AI. It decides cheaply whether the update belongs to the funnel and, if
@@ -9,14 +12,17 @@ so, queues the work and returns True. Everything else passes through untouched.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from typing import Optional
 
 from fastapi import BackgroundTasks
 from loguru import logger
+from sqlalchemy import update
 
 from app.config import settings
 from app.db import session as db_session
-from app.funnel import booking, delivery, keywords, locks, repo, texts
+from app.funnel import booking, delivery, funnels, locks, repo, texts
+from app.funnel.funnels import FunnelView
 from app.models.funnel import COLLECTION_STEPS, FunnelEntry
 from app.services.phone import extract_phone
 from app.state.store import store
@@ -60,8 +66,9 @@ async def _claim(update: dict, background: BackgroundTasks) -> bool:
     if sender.get("is_bot"):
         return False
     if chat.get("type") in ("group", "supergroup"):
-        if _is_keyword_comment(msg):
-            background.add_task(handle_group_comment, msg)
+        funnel = await _group_funnel(msg)
+        if funnel is not None:
+            background.add_task(handle_group_comment, msg, funnel)
             return True
         return False
     if chat.get("type") != "private" or not sender.get("id"):
@@ -71,10 +78,10 @@ async def _claim(update: dict, background: BackgroundTasks) -> bool:
     text = str(msg.get("text") or "").strip()
     if text.startswith("/"):
         command, argument = _command(text)
-        if command == "start" and await _start_is_funnel(user_id, argument):
+        if command == "start" and await _start_claimed(user_id, argument):
             background.add_task(handle_start, msg, argument)
             return True
-        if command == "stop" and await _state_of(user_id) is not None:
+        if command == "stop" and await _has_entry(user_id):
             background.add_task(handle_stop, msg)
             return True
         return False     # menu commands, /id, ... keep working
@@ -95,41 +102,82 @@ def _command(text: str) -> tuple[str, str]:
 
 
 async def _state_of(user_id: str) -> Optional[tuple[str, bool]]:
-    """(step, opted_out) of the person's entry. opted_out during a collection step
-    means "paused by /stop": their text goes to the AI until /start resumes."""
+    """(step, opted_out) of the person's current (collecting) entry. opted_out
+    there means "paused by /stop": their text goes to the AI until /start."""
     async with db_session.SessionLocal() as db:
-        entry = await repo.entry_by_tg(db, user_id)
+        entry = await repo.current_entry(db, user_id)
         return (entry.step, entry.opted_out) if entry else None
 
 
-async def _start_is_funnel(user_id: str, argument: str) -> bool:
-    """Which /start belongs to the funnel (the rest is the menu greeting / deep link)."""
-    if argument == "tgc":
-        return bool(settings.FUNNEL_ENABLED)
+async def _has_entry(user_id: str) -> bool:
     async with db_session.SessionLocal() as db:
-        if argument and await repo.entry_by_token(db, argument):
-            return True     # an Instagram link — that person was promised the PDF
-        entry = await repo.entry_by_tg(db, user_id)
-    if argument and menu.current().by_command(argument):
-        return False        # t.me/<bot>?start=narxlar — menu deep link
-    if entry is not None and entry.step in COLLECTION_STEPS:
-        return True         # resume the unfinished questions
-    return bool(settings.FUNNEL_ENABLED and settings.FUNNEL_BOT_START_FUNNEL)
+        return await repo.entry_by_tg(db, user_id) is not None
 
 
-def _is_keyword_comment(msg: dict) -> bool:
+@dataclass(frozen=True)
+class StartPlan:
+    """What a /start does: continue an entry, bind an Instagram token, or enter a
+    funnel (creating the person's entry there if needed)."""
+
+    funnel: FunnelView
+    source: str
+    token_entry_id: Optional[uuid.UUID] = None
+    resume_entry_id: Optional[uuid.UUID] = None
+
+
+async def _start_claimed(user_id: str, argument: str) -> bool:
+    async with db_session.SessionLocal() as db:
+        return await _plan_start(db, user_id, argument) is not None
+
+
+async def _plan_start(db, user_id: str, argument: str) -> Optional[StartPlan]:
+    """None = not a funnel start (menu greeting / menu deep link / AI)."""
+    if argument:
+        token_entry = await repo.entry_by_token(db, argument)
+        if token_entry is not None:     # an Instagram link — that person was promised the PDF
+            funnel = await funnels.get(db, token_entry.funnel_id)
+            return StartPlan(funnel, "instagram", token_entry_id=token_entry.id)
+        linked = await funnels.from_payload(db, argument)
+        if linked is not None:          # tgc / tgc_<slug> / f_<slug>
+            funnel, source = linked
+            if settings.FUNNEL_ENABLED and funnel.is_active:
+                return StartPlan(funnel, source)
+            existing = await repo.entry_by_tg(db, user_id, funnel.id)
+            # Switched off: no new entries; only someone mid-questions may finish
+            # (anyone else gets the menu greeting as before)
+            if existing is not None and existing.step in COLLECTION_STEPS:
+                return StartPlan(funnel, source, resume_entry_id=existing.id)
+            return None
+        if menu.current().by_command(argument):
+            return None                 # t.me/<bot>?start=narxlar — menu deep link
+    current = await repo.current_entry(db, user_id)
+    if current is not None:             # resume the unfinished questions
+        return StartPlan(await funnels.get(db, current.funnel_id), current.source,
+                         resume_entry_id=current.id)
+    if not (settings.FUNNEL_ENABLED and settings.FUNNEL_BOT_START_FUNNEL):
+        return None
+    latest = await repo.entry_by_tg(db, user_id)
+    if latest is not None:              # their own funnel (its PDF is re-sent)
+        return StartPlan(await funnels.get(db, latest.funnel_id), latest.source,
+                         resume_entry_id=latest.id)
+    return StartPlan(await funnels.default(db), "telegram_direct")   # newcomers only
+
+
+async def _group_funnel(msg: dict) -> Optional[FunnelView]:
+    """The funnel a keyword comment in the channel's discussion group belongs to."""
     if not settings.FUNNEL_ENABLED or not telegram.enabled:
-        return False
+        return None
     chat_id = str((msg.get("chat") or {}).get("id"))
     wanted = (settings.FUNNEL_TG_DISCUSSION_CHAT_ID or "").strip()
     if wanted and chat_id != wanted:
-        return False
+        return None
     if chat_id in chat_ids(settings.TELEGRAM_CHAT_ID):
-        return False     # the staff alert group is not a customer channel
+        return None      # the staff alert group is not a customer channel
     # The channel post itself is auto-forwarded into the group and contains the keyword
     if msg.get("is_automatic_forward") or msg.get("sender_chat"):
-        return False
-    return keywords.matches(str(msg.get("text") or msg.get("caption") or ""))
+        return None
+    text = str(msg.get("text") or msg.get("caption") or "")
+    return funnels.match_direct(await funnels.load_all(), text, strict=False)
 
 
 # --------------------------------------------------------------------------- #
@@ -165,9 +213,9 @@ def menu_keyboard() -> dict:
     return menu.reply_keyboard(current) if current.items else {"remove_keyboard": True}
 
 
-def grade_keyboard() -> dict:
+def grade_keyboard(funnel: FunnelView) -> dict:
     buttons = [{"text": texts.grade_display(g), "callback_data": f"fb:g:{g}"}
-               for g in texts.grade_options()]
+               for g in funnel.grade_options()]
     return {"inline_keyboard": [buttons[i:i + 4] for i in range(0, len(buttons), 4)]}
 
 
@@ -199,6 +247,7 @@ async def ask_next(entry_id: uuid.UUID) -> None:
         entry = await db.get(FunnelEntry, entry_id)
         if entry is None or not entry.tg_chat_id:
             return
+        funnel = await funnels.get(db, entry.funnel_id)
         step = _next_step(entry)
         if step != "pdf" and entry.step != step:
             entry.step = step
@@ -206,13 +255,13 @@ async def ask_next(entry_id: uuid.UUID) -> None:
             await db.commit()
         chat_id = entry.tg_chat_id
     if step == "ask_name":
-        await telegram.send_message(chat_id, settings.FUNNEL_ASK_NAME)
+        await telegram.send_message(chat_id, funnel.text("FUNNEL_ASK_NAME"))
     elif step == "ask_phone":
-        await telegram.send_message(chat_id, settings.FUNNEL_ASK_PHONE,
+        await telegram.send_message(chat_id, funnel.text("FUNNEL_ASK_PHONE"),
                                     reply_markup=contact_keyboard())
     elif step == "ask_grade":
-        await telegram.send_message(chat_id, settings.FUNNEL_ASK_GRADE,
-                                    reply_markup=grade_keyboard())
+        await telegram.send_message(chat_id, funnel.text("FUNNEL_ASK_GRADE"),
+                                    reply_markup=grade_keyboard(funnel))
     else:
         await delivery.deliver_pdf(entry_id)
 
@@ -270,53 +319,78 @@ async def handle_start(msg: dict, argument: str) -> None:
         return
     async with locks.lock(f"tg:{user_id}"):
         async with db_session.SessionLocal() as db:
-            entry = await _resolve_entry(db, user_id, argument)
+            plan = await _plan_start(db, user_id, argument)
+            if plan is None:
+                return
+            entry, funnel = await _enter(db, user_id, plan)
             first_start = entry.bot_started_at is None
             entry.bot_started_at = entry.bot_started_at or repo.now()
             entry.tg_chat_id = chat_id
             entry.tg_username = username or entry.tg_username
-            entry.opted_out = False      # pressing Start again = wants messages again
             if entry.step in ("ig_waiting_follow", "ig_link_sent"):
                 entry.step = "ask_name"
+            # Pressing Start again = wants messages again (every funnel). The other
+            # entries keep their updated_at: the one just started stays "current".
+            await db.execute(
+                update(FunnelEntry)
+                .where(FunnelEntry.tg_user_id == user_id, FunnelEntry.id != entry.id,
+                       FunnelEntry.opted_out.is_(True))
+                .values(opted_out=False, updated_at=FunnelEntry.updated_at)
+                .execution_options(synchronize_session=False))
+            entry.opted_out = False
             repo.touch(entry)
             await db.commit()
-        logger.info("Funnel /start: tg={} source={} step={}", user_id, entry.source, entry.step)
-        await _continue(entry, welcome=first_start)
+        logger.info("Funnel /start: tg={} funnel={} source={} step={}", user_id,
+                    funnel.slug, entry.source, entry.step)
+        await _continue(entry, funnel, welcome=first_start)
 
 
-async def _resolve_entry(db, user_id: str, argument: str) -> FunnelEntry:
-    """Bind an Instagram token, merge into an existing Telegram entry, or create one."""
-    tg_entry = await repo.entry_by_tg(db, user_id)
-    if argument and argument != "tgc":
-        ig_entry = await repo.entry_by_token(db, argument)
+async def _enter(db, user_id: str, plan: StartPlan) -> tuple[FunnelEntry, FunnelView]:
+    """The person's entry (and its funnel) for this start: bind an Instagram token
+    (merging into their entry in that funnel if they have one), resume one, or
+    create one."""
+    entry: Optional[FunnelEntry] = None
+    funnel = plan.funnel
+    source = plan.source
+    if plan.token_entry_id is not None:
+        ig_entry = await db.get(FunnelEntry, plan.token_entry_id)
         if ig_entry is not None and ig_entry.tg_user_id and ig_entry.tg_user_id != user_id:
-            ig_entry = None      # someone else's forwarded link: start their own flow
-        if ig_entry is not None:
+            source = "telegram_direct"   # someone else's forwarded link: their own entry
+            if not funnel.is_active:     # ...and an archived funnel takes no one new
+                funnel = await funnels.default(db)
+        elif ig_entry is not None:
+            tg_entry = await repo.entry_by_tg(db, user_id, ig_entry.funnel_id)
             if tg_entry is None or tg_entry.id == ig_entry.id:
                 ig_entry.tg_user_id = user_id
-                return ig_entry
-            await repo.merge_into(db, ig_entry, tg_entry)
-            return tg_entry
-    if tg_entry is not None:
-        return tg_entry
-    entry = FunnelEntry(
-        source="telegram_channel" if argument == "tgc" else "telegram_direct",
-        start_token=repo.new_token(), tg_user_id=user_id, step="ask_name",
-        follow_checks=0, opted_out=False, sheet_dirty=True,
-    )
-    db.add(entry)
-    await db.flush()
-    return entry
+                entry = ig_entry
+            else:
+                await repo.merge_into(db, ig_entry, tg_entry)
+                entry = tg_entry
+    elif plan.resume_entry_id is not None:
+        entry = await db.get(FunnelEntry, plan.resume_entry_id)
+    if entry is None:
+        entry = await repo.entry_by_tg(db, user_id, funnel.id)
+    if entry is None:
+        entry = FunnelEntry(
+            funnel_id=funnel.id, source=source, start_token=repo.new_token(),
+            tg_user_id=user_id, step="ask_name", follow_checks=0, opted_out=False,
+            sheet_dirty=True,
+        )
+        db.add(entry)
+        await db.flush()
+    await repo.prefill_contact(db, entry)
+    return entry, funnel
 
 
-async def _continue(entry: FunnelEntry, *, welcome: bool) -> None:
+async def _continue(entry: FunnelEntry, funnel: FunnelView, *, welcome: bool) -> None:
     """After /start or a passed gate: resend the PDF, show the gate, or ask."""
     if entry.step in ("pdf_sent", "pdf_pending"):
         await delivery.deliver_pdf(entry.id)
         return
     chat_id = entry.tg_chat_id
-    if welcome and settings.FUNNEL_BOT_WELCOME.strip():
-        await telegram.send_message(chat_id, settings.FUNNEL_BOT_WELCOME)
+    greeting = funnel.text("FUNNEL_BOT_WELCOME")
+    if welcome and greeting.strip():
+        await telegram.send_message(chat_id, greeting)
     channel_url = await _gate_blocks(entry)
     if channel_url:
         await _save(entry.id, step="tg_channel_gate")
@@ -334,11 +408,15 @@ async def handle_stop(msg: dict) -> None:
         return
     async with locks.lock(f"tg:{user_id}"):
         async with db_session.SessionLocal() as db:
-            entry = await repo.entry_by_tg(db, user_id)
-            if entry is None:
-                return
-            entry.opted_out = True
+            # Every funnel's messages stop; updated_at is kept so /start later
+            # resumes the same "current" entry
+            result = await db.execute(
+                update(FunnelEntry).where(FunnelEntry.tg_user_id == user_id)
+                .values(opted_out=True, updated_at=FunnelEntry.updated_at)
+                .execution_options(synchronize_session=False))
             await db.commit()
+            if not result.rowcount:
+                return
     await telegram.send_message(chat_id, texts.STOPPED, reply_markup=menu_keyboard())
 
 
@@ -348,16 +426,17 @@ async def handle_collection(msg: dict) -> None:
         return
     async with locks.lock(f"tg:{user_id}"):
         async with db_session.SessionLocal() as db:
-            entry = await repo.entry_by_tg(db, user_id)
-        if entry is None or entry.step not in COLLECTION_STEPS or entry.opted_out:
+            entry = await repo.current_entry(db, user_id)
+            funnel = await funnels.get(db, entry.funnel_id) if entry else None
+        if entry is None or funnel is None or entry.opted_out:
             to_ai = True     # finished or paused meanwhile
         else:
-            to_ai = await _collect(entry, msg, chat_id)
+            to_ai = await _collect(entry, funnel, msg, chat_id)
     if to_ai:
         await _to_ai(msg)
 
 
-async def _collect(entry: FunnelEntry, msg: dict, chat_id: str) -> bool:
+async def _collect(entry: FunnelEntry, funnel: FunnelView, msg: dict, chat_id: str) -> bool:
     """Handle one answer. Returns True when the message belongs to the AI instead:
     a question ("?") or the 2nd invalid answer in a row — the step is kept, so the
     next valid answer continues the funnel."""
@@ -404,9 +483,9 @@ async def _collect(entry: FunnelEntry, msg: dict, chat_id: str) -> bool:
         await telegram.send_message(chat_id, texts.PHONE_ACCEPTED, reply_markup=menu_keyboard())
         await ask_next(entry.id)
     elif entry.step == "ask_grade":
-        grade = texts.parse_grade(text)
+        grade = texts.parse_grade(text, funnel.grade_options())
         if not grade:
-            return await _invalid(entry, chat_id, texts.GRADE_INVALID, grade_keyboard())
+            return await _invalid(entry, chat_id, texts.GRADE_INVALID, grade_keyboard(funnel))
         await _reset_fails(entry.tg_user_id)
         await _save(entry.id, grade=grade)
         await ask_next(entry.id)
@@ -511,28 +590,32 @@ async def _seen_callback(callback_id: str) -> bool:
 
 async def _on_grade(user_id: str, chat_id: str, message_id: object, grade: str) -> None:
     async with db_session.SessionLocal() as db:
-        entry = await repo.entry_by_tg(db, user_id)
-    if entry is None or entry.step != "ask_grade":
+        entry = await repo.current_entry(db, user_id)
+        funnel = await funnels.get(db, entry.funnel_id) if entry else None
+    if entry is None or funnel is None or entry.step != "ask_grade":
         return      # stale button: this question was already answered
-    if grade not in texts.grade_options():
+    if grade not in funnel.grade_options():
         # The grade list was edited since this message was sent: show the current one
-        await telegram.send_message(chat_id, texts.GRADE_INVALID, reply_markup=grade_keyboard())
+        await telegram.send_message(chat_id, texts.GRADE_INVALID,
+                                    reply_markup=grade_keyboard(funnel))
         return
     await _save(entry.id, grade=grade, opted_out=False)
     await _reset_fails(user_id)
     if message_id:
         await telegram.edit_message_text(
-            chat_id, message_id, f"{settings.FUNNEL_ASK_GRADE}\n\n✅ {texts.grade_display(grade)}")
+            chat_id, message_id,
+            f"{funnel.text('FUNNEL_ASK_GRADE')}\n\n✅ {texts.grade_display(grade)}")
     await ask_next(entry.id)
 
 
 async def _on_gate_check(user_id: str, chat_id: str) -> Optional[str]:
     async with db_session.SessionLocal() as db:
-        entry = await repo.entry_by_tg(db, user_id)
-    if entry is None:
+        entry = await repo.current_entry(db, user_id)
+        known = entry is not None or await repo.entry_by_tg(db, user_id) is not None
+    if not known:
         await telegram.send_message(chat_id, texts.START_FIRST)
         return None
-    if entry.step != "tg_channel_gate":
+    if entry is None or entry.step != "tg_channel_gate":
         return None
     if await _gate_blocks(entry):
         return texts.CHANNEL_NOT_MEMBER
@@ -541,8 +624,8 @@ async def _on_gate_check(user_id: str, chat_id: str) -> Optional[str]:
     return None
 
 
-async def handle_group_comment(msg: dict) -> None:
-    """Keyword comment under a channel post: reply with a deep-link button."""
+async def handle_group_comment(msg: dict, funnel: FunnelView) -> None:
+    """Keyword comment under a channel post: reply with the funnel's deep link."""
     user_id = str((msg.get("from") or {}).get("id") or "")
     chat_id = str((msg.get("chat") or {}).get("id"))
     try:
@@ -550,11 +633,11 @@ async def handle_group_comment(msg: dict) -> None:
             return
     except Exception as exc:  # noqa: BLE001
         logger.warning("Funnel group rate check failed (continuing): {}", exc)
-    link = await repo.bot_link("tgc")
+    link = await repo.bot_link(funnel.channel_payload)
     if not link:
         logger.warning("Funnel: bot username unknown — cannot reply to the group comment")
         return
     await telegram.send_message(
-        chat_id, settings.FUNNEL_TG_COMMENT_REPLY,
+        chat_id, funnel.text("FUNNEL_TG_COMMENT_REPLY"),
         reply_to_message_id=msg.get("message_id"),
         reply_markup={"inline_keyboard": [[{"text": texts.LINK_BUTTON, "url": link}]]})

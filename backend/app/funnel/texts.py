@@ -131,12 +131,13 @@ def grade_display(grade: str | None) -> str:
     return f"{grade}-sinf" if grade.isdigit() else grade
 
 
-def parse_grade(text: str) -> str | None:
-    """Typed grade -> stored value: a listed option ("5-sinf" -> "5") or short free text."""
+def parse_grade(text: str, options: list[str] | None = None) -> str | None:
+    """Typed grade -> stored value: a listed option ("5-sinf" -> "5") or short free
+    text. `options`: the funnel's grade list (default: the global one)."""
     raw = " ".join((text or "").split())
     if not raw or len(raw) > 20:
         return None
-    options = grade_options()
+    options = grade_options() if options is None else options
     for option in options:
         if raw.casefold() in (option.casefold(), grade_display(option).casefold()):
             return option

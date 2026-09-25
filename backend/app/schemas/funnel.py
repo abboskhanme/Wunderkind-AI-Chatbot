@@ -1,4 +1,4 @@
-"""Pydantic schemas for the funnel admin API (SPEC §10.4)."""
+"""Pydantic schemas for the funnel admin API (SPEC §10.4, §11.3)."""
 from __future__ import annotations
 
 import uuid
@@ -54,6 +54,8 @@ class FunnelStats(BaseModel):
 class BookingOut(BaseModel):
     id: uuid.UUID
     entry_id: uuid.UUID
+    funnel_id: uuid.UUID
+    funnel_name: Optional[str] = None
     lead_id: Optional[uuid.UUID] = None
     full_name: Optional[str] = None
     phone: Optional[str] = None
@@ -67,6 +69,8 @@ class BookingOut(BaseModel):
 
 class FunnelEntryOut(BaseModel):
     id: uuid.UUID
+    funnel_id: uuid.UUID
+    funnel_name: Optional[str] = None
     source: str
     step: str
     full_name: Optional[str] = None
@@ -101,6 +105,7 @@ class SlotOut(BaseModel):
 # --- Sales sequence -----------------------------------------------------------------
 class FunnelMessageOut(ORM):
     id: uuid.UUID
+    funnel_id: uuid.UUID
     sort_order: int
     text: str
     delay_minutes: int
@@ -160,3 +165,55 @@ class TestMessageIn(BaseModel):
 class SentOut(BaseModel):
     sent: bool
     error: Optional[str] = None
+
+
+# --- Funnels (SPEC §11.3) ------------------------------------------------------------
+SLUG_FIELD = r"^[a-z0-9_]{1,32}$"
+
+
+class FunnelLinks(BaseModel):
+    telegram_channel: Optional[str] = None
+    telegram_direct: Optional[str] = None
+
+
+class FunnelCounts(BaseModel):
+    entries: int = 0
+    pdf_sent: int = 0
+    booked: int = 0
+
+
+class FunnelOut(BaseModel):
+    id: uuid.UUID
+    name: str
+    slug: str
+    is_active: bool
+    is_default: bool
+    keywords: str
+    ig_media_ids: str
+    texts: dict[str, str]
+    sort_order: int
+    links: FunnelLinks
+    stats: FunnelCounts
+    has_pdf: bool
+    created_at: datetime
+
+
+class FunnelIn(BaseModel):
+    name: str = Field(min_length=1, max_length=120)
+    slug: Optional[str] = Field(default=None, pattern=SLUG_FIELD)
+    keywords: str = Field(default="", max_length=500)
+    ig_media_ids: Optional[str] = Field(default="", max_length=4000)
+    is_active: bool = True
+    texts: dict[str, Optional[str]] = Field(default_factory=dict)
+    # Duplicate texts, sales messages and PDF of another funnel
+    copy_from_id: Optional[uuid.UUID] = None
+
+
+class FunnelPatch(BaseModel):
+    name: Optional[str] = Field(default=None, min_length=1, max_length=120)
+    slug: Optional[str] = Field(default=None, pattern=SLUG_FIELD)
+    keywords: Optional[str] = Field(default=None, max_length=500)
+    ig_media_ids: Optional[str] = Field(default=None, max_length=4000)
+    is_active: Optional[bool] = None
+    # Merged into the overrides; "" / null for a key = back to the global text
+    texts: Optional[dict[str, Optional[str]]] = None

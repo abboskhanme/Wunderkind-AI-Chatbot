@@ -34,6 +34,16 @@ def database(monkeypatch):
     asyncio.run(_create())
     factory = async_sessionmaker(engine, expire_on_commit=False)
     monkeypatch.setattr(db_session, "SessionLocal", factory)
+
+    async def _default_funnel():
+        # Same state as after the migrations: the default funnel exists (SPEC §11.1)
+        from app.funnel.funnels import ensure_default, invalidate
+
+        invalidate()                  # the funnel cache belongs to the previous test's DB
+        async with factory() as session:
+            await ensure_default(session)
+
+    asyncio.run(_default_funnel())
     yield factory
     asyncio.run(engine.dispose())
 

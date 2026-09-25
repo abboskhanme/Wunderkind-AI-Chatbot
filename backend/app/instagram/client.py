@@ -252,6 +252,11 @@ class InstagramClient:
         data = await self._get(igsid, params={"fields": "username,is_user_follow_business"})
         return data or None
 
+    async def get_media(self, media_id: str) -> dict | None:
+        """{shortcode, permalink} of a post — funnels may filter posts by link."""
+        data = await self._get(media_id, params={"fields": "shortcode,permalink"})
+        return data or None
+
     async def subscribe_webhooks(self) -> dict:
         """Akkauntni webhook maydonlariga obuna qiladi (/connect oqimida chaqiriladi).
 

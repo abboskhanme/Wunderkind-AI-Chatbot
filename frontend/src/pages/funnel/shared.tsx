@@ -1,13 +1,24 @@
 import { Link } from 'react-router-dom'
-import { AlertTriangle, MessagesSquare, RefreshCw } from 'lucide-react'
+import { AlertTriangle, Copy, MessagesSquare, RefreshCw } from 'lucide-react'
 import { errorMessage } from '@/api/client'
-import type { BookingStatus, FunnelSource, FunnelStep } from '@/api/types'
+import type { BookingStatus, FunnelOut, FunnelSource, FunnelStep } from '@/api/types'
 import { Badge, Button, Empty } from '@/components/ui'
 import {
   BOOKING_STATUS_COLORS, BOOKING_STATUS_LABELS, FUNNEL_SOURCE_COLORS, FUNNEL_SOURCE_LABELS,
   FUNNEL_STEP_COLORS, FUNNEL_STEP_LABELS,
 } from '@/lib/labels'
 import { cn } from '@/lib/cn'
+import { copyText } from '@/lib/clipboard'
+
+export const FUNNELS_KEY = ['funnel', 'funnels'] as const
+
+/** Props every Voronka tab receives from the page shell. */
+export interface FunnelTabProps {
+  /** Selected funnel; null = "Hammasi" (all funnels) */
+  funnel: FunnelOut | null
+  funnels: FunnelOut[]
+  selectFunnel: (id: string | null) => void
+}
 
 export function ErrorState({ error, onRetry }: { error: unknown; onRetry: () => void }) {
   return (
@@ -55,5 +66,27 @@ export function LeadLink({ leadId, className }: { leadId: string | null; classNa
     >
       <MessagesSquare className="h-3.5 w-3.5" /> Suhbat
     </Link>
+  )
+}
+
+export function FunnelBadge({ name }: { name: string | null | undefined }) {
+  if (!name) return null
+  return <Badge className="bg-violet-50 text-violet-700 ring-violet-200">{name}</Badge>
+}
+
+export function CopyRow({ label, value, hint }: { label: string; value: string | null; hint?: string }) {
+  return (
+    <div>
+      <p className="mb-1 text-xs font-medium text-gray-700">{label}</p>
+      <div className="flex items-center gap-2 rounded-lg bg-gray-50 px-3 py-2 ring-1 ring-gray-200">
+        <code className="min-w-0 flex-1 truncate text-xs text-gray-800">{value || "Bot ulanmagan — havola yo'q"}</code>
+        {value && (
+          <button type="button" onClick={() => copyText(value)} className="rounded p-1 text-gray-400 hover:bg-white hover:text-gray-700" title="Nusxa olish" aria-label="Nusxa olish">
+            <Copy className="h-3.5 w-3.5" />
+          </button>
+        )}
+      </div>
+      {hint && <p className="mt-1 text-xs text-gray-500">{hint}</p>}
+    </div>
   )
 }

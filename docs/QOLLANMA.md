@@ -88,10 +88,11 @@ maslahat» qo'llanmasini Telegram bot orqali oladi, so'ng qabul suhbatiga yozila
 Bu qadamlar AI emas — matnlari oldindan yozilgan va o'zgarmaydi.
 
 ### 5.1. Sozlash (administrator)
-1. **Voronka → Sozlamalar**: qo'llanma PDF faylini yuklang (20 MB gacha). PDF
-   yuklanmaguncha kelganlar «tez orada yuboramiz» xabarini oladi va fayl
-   yuklangach avtomatik qabul qiladi.
-2. Matnlarni ko'rib chiqing: salomlashuv, savollar, tasdiq va eslatma. Tasdiq va
+1. **Voronka → (voronkani tanlang) → Sozlamalar**: shu voronkaning qo'llanma PDF
+   faylini yuklang (20 MB gacha). PDF yuklanmaguncha kelganlar «tez orada
+   yuboramiz» xabarini oladi va fayl yuklangach avtomatik qabul qiladi.
+2. Matnlarni ko'rib chiqing: salomlashuv va savollar — voronka sozlamalarida,
+   tasdiq va eslatma — «Umumiy sozlamalar»da. Tasdiq va
    eslatmada `{name}`, `{date}`, `{time}`, `{weekday}`, `{staff_name}`,
    `{staff_phone}`, `{address}` o'rinbosarlari ishlaydi. Mas'ul xodim, telefon,
    manzil va lokatsiyani (kenglik/uzunlik) to'ldiring.
@@ -135,3 +136,35 @@ Bu qadamlar AI emas — matnlari oldindan yozilgan va o'zgarmaydi.
 - Instagram'da siz o'zingiz yozgan (AI to'xtatilgan) suhbatga voronka aralashmaydi.
 - Qo'llanmani yuborishda Telegram xato bersa, tizim o'zi qayta urinadi va sizga
   bildirishnoma keladi.
+
+### 5.5. Bir nechta voronka
+Har xil video yoki reklama uchun alohida voronka ochish mumkin (masalan «Yozgi
+lager»). Barcha voronkalarda qadamlar bir xil (obuna → ism → telefon → sinf →
+qo'llanma → suhbatga yozilish); jadval, mas'ul xodim, manzil, tasdiq/eslatma
+matnlari va Google Sheets — umumiy.
+
+Har bir voronkaning o'zida:
+- **Kalit so'zlar** — izohga shu so'z yozilsa, shu voronka ishlaydi. Asosiy voronkada
+  bo'sh qoldirilsa — umumiy kalit so'zlar ishlatiladi.
+- **Instagram postlari** (ixtiyoriy) — post havolalarini qo'ying: kalit so'z faqat
+  shu postlar ostida shu voronkaga olib keladi. Bo'sh — istalgan post.
+- **Qo'llanma PDF** va **sotuv xabarlari** — har voronkaning o'zi.
+- **Matnlar** — bo'sh maydon umumiy matnni ishlatadi (maydonda kulrang ko'rinadi).
+- **Havolalar** — Telegram kanal posti uchun `?start=tgc_<nom>`, reklama/bio uchun
+  `?start=f_<nom>`; sozlamalarda nusxa olish tugmasi bor.
+
+Qoidalar:
+- Bir xil kalit so'z bir xil postlar uchun ikkita faol voronkada bo'lolmaydi — tizim
+  saqlashga ruxsat bermaydi. Turli postlar uchun bir xil so'z ishlatish mumkin.
+- Bitta ota-ona bir nechta voronkadan o'tishi mumkin: ism va telefon qayta
+  so'ralmaydi, har voronka o'z qo'llanmasini yuboradi. Suhbatga esa bitta yoziladi —
+  boshqa voronkadan yozilsa, vaqti o'zgaradi.
+- Nofaol voronka yangi mijoz qabul qilmaydi, boshlaganlar oxirigacha o'tadi.
+- Mijozi bor voronkani o'chirib bo'lmaydi — uni **arxivlang** (nofaol qiling).
+  Asosiy voronkani o'chirib yoki nofaol qilib bo'lmaydi.
+- Yangi voronkani mavjudidan **nusxa** qilib ochish mumkin: matnlar, sotuv xabarlari
+  va PDF ko'chadi (kalit so'zlar va postlar — yo'q).
+- Google Sheets'da oxirgi «Voronka» ustuni qo'shiladi (mavjud qatorlar keyingi
+  yangilanishda to'ladi). **«O» ustuni «Voronka» uchun ajratilgan** — unga o'z
+  ma'lumotingizni yozmang. Agar u yerda boshqa narsa bo'lsa, tizim uni o'chirmaydi:
+  «Voronka» yozilmaydi va Telegramga ogohlantirish keladi.

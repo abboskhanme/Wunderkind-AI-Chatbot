@@ -4,13 +4,14 @@ import toast from 'react-hot-toast'
 import { AlertTriangle, ArrowDown, ArrowUp, Clock, ImagePlus, MessageSquareText, Pencil, Plus, Save, Trash2, X } from 'lucide-react'
 import { funnelApi } from '@/api/funnel'
 import { errorMessage } from '@/api/client'
-import type { FunnelMessageInput, FunnelMessageOut } from '@/api/types'
+import type { FunnelMessageInput, FunnelMessageOut, FunnelOut } from '@/api/types'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label, Loading, Modal, Select, Textarea, Toggle } from '@/components/ui'
 import { AuthImage } from '@/components/AuthImage'
 import { fmtMinutes } from '@/lib/format'
-import { ErrorState } from './shared'
+import { ErrorState, type FunnelTabProps } from './shared'
 
-const MESSAGES_KEY = ['funnel', 'messages'] as const
+/** Prefix of every funnel's message list query: `[...MESSAGES_KEY, funnelId]`. */
+export const MESSAGES_KEY = ['funnel', 'messages'] as const
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp']
 
@@ -42,7 +43,7 @@ interface FormState {
   is_active: boolean
 }
 
-function MessageModal({ message, open, onClose }: { message: FunnelMessageOut | null; open: boolean; onClose: () => void }) {
+function MessageModal({ funnelId, message, open, onClose }: { funnelId: string; message: FunnelMessageOut | null; open: boolean; onClose: () => void }) {
   const qc = useQueryClient()
   const [form, setForm] = useState<FormState>({ text: '', amount: '1', unit: 'days', is_active: true })
   useEffect(() => {
@@ -60,7 +61,7 @@ function MessageModal({ message, open, onClose }: { message: FunnelMessageOut | 
   const save = useMutation({
     mutationFn: () => {
       const body: FunnelMessageInput = { text: form.text.trim(), delay_minutes: delayMinutes, is_active: form.is_active }
-      return message ? funnelApi.updateMessage(message.id, body) : funnelApi.createMessage(body)
+      return message ? funnelApi.updateMessage(message.id, body) : funnelApi.createMessage(body, funnelId)
     },
     onSuccess: () => {
       toast.success('Saqlandi')
@@ -197,9 +198,18 @@ function MessageImage({ message }: { message: FunnelMessageOut }) {
   )
 }
 
-export function MessagesTab() {
+export function MessagesTab({ funnel }: FunnelTabProps) {
+  // Only offered for a concrete funnel (not "Hammasi")
+  if (!funnel) return null
+  return <FunnelMessages key={funnel.id} funnel={funnel} />
+}
+
+function FunnelMessages({ funnel }: { funnel: FunnelOut }) {
   const qc = useQueryClient()
-  const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: MESSAGES_KEY, queryFn: funnelApi.messages })
+  const { data, isLoading, isError, error, refetch } = useQuery({
+    queryKey: [...MESSAGES_KEY, funnel.id],
+    queryFn: () => funnelApi.messages(funnel.id),
+  })
   const [editing, setEditing] = useState<FunnelMessageOut | null>(null)
   const [modalOpen, setModalOpen] = useState(false)
 
@@ -221,7 +231,7 @@ export function MessagesTab() {
     onError: (e) => toast.error(errorMessage(e)),
   })
   const reorder = useMutation({
-    mutationFn: (ids: string[]) => funnelApi.reorderMessages(ids),
+    mutationFn: (ids: string[]) => funnelApi.reorderMessages(ids, funnel.id),
     onSuccess: () => qc.invalidateQueries({ queryKey: MESSAGES_KEY }),
     onError: (e) => toast.error(errorMessage(e)),
   })
@@ -243,7 +253,7 @@ export function MessagesTab() {
     <>
       <Card>
         <CardHeader
-          title="Sotuv xabarlari"
+          title={`Sotuv xabarlari — «${funnel.name}»`}
           subtitle="Qo'llanma (PDF) olgan mijozga belgilangan vaqtda ketma-ket yuboriladi — faqat 09:00–21:00 oralig'ida. Mijoz suhbatga yozilsa yoki botni to'xtatsa, yuborish to'xtaydi."
           action={<Button size="sm" className="shrink-0 whitespace-nowrap" icon={<Plus className="h-4 w-4" />} onClick={openNew}>Xabar qo'shish</Button>}
         />
@@ -308,7 +318,7 @@ export function MessagesTab() {
           </>
         )}
       </Card>
-      <MessageModal message={editing} open={modalOpen} onClose={() => setModalOpen(false)} />
+      <MessageModal funnelId={funnel.id} message={editing} open={modalOpen} onClose={() => setModalOpen(false)} />
     </>
   )
 }

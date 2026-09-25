@@ -1,4 +1,5 @@
-"""Sending the lead-magnet PDF and sales-sequence messages to Telegram."""
+"""Sending the lead-magnet PDF and sales-sequence messages to Telegram.
+Each funnel has its own PDF, caption and booking-button text (SPEC §11)."""
 from __future__ import annotations
 
 import html
@@ -11,7 +12,8 @@ from sqlalchemy import select, update
 
 from app.config import settings
 from app.db import session as db_session
-from app.funnel import locks, repo, texts
+from app.funnel import funnels, locks, repo, texts
+from app.funnel.funnels import FunnelView
 from app.models.funnel import LEAD_MAGNET_KEY, FunnelEntry, FunnelFile, FunnelMessage
 from app.state.store import store
 from app.telegram import notifier
@@ -24,8 +26,9 @@ _NO_PDF_ALERT_KEY = "fnl:alert:no-pdf"
 _PDF_FAILED_ALERT_KEY = "fnl:alert:pdf-failed"
 
 
-def book_keyboard() -> dict:
-    return {"inline_keyboard": [[{"text": settings.FUNNEL_BOOK_BUTTON or "📝 Suhbatga yozilish",
+def book_keyboard(funnel: Optional[FunnelView] = None) -> dict:
+    label = funnel.text("FUNNEL_BOOK_BUTTON") if funnel else settings.FUNNEL_BOOK_BUTTON
+    return {"inline_keyboard": [[{"text": label or "📝 Suhbatga yozilish",
                                   "callback_data": "fb:start"}]]}
 
 
@@ -38,11 +41,18 @@ def _bot_id() -> str:
     return settings.TG_SALES_BOT_TOKEN.split(":", 1)[0]
 
 
-async def _pdf_bytes(key: str) -> Optional[bytes]:
+async def _pdf_bytes(funnel_id: uuid.UUID) -> Optional[bytes]:
     async with db_session.SessionLocal() as db:
-        data = (await db.execute(select(FunnelFile.data).where(FunnelFile.key == key))
-                ).scalar_one_or_none()
+        data = (await db.execute(
+            select(FunnelFile.data).where(FunnelFile.funnel_id == funnel_id,
+                                          FunnelFile.key == LEAD_MAGNET_KEY)
+        )).scalar_one_or_none()
     return bytes(data) if data else None
+
+
+async def _pdf_meta(funnel_id: uuid.UUID) -> Optional[FunnelFile]:
+    async with db_session.SessionLocal() as db:
+        return await db.get(FunnelFile, (funnel_id, LEAD_MAGNET_KEY))
 
 
 def fit_caption(text: str) -> Optional[str]:
@@ -58,17 +68,21 @@ def retry_delay(attempts: int) -> timedelta:
     return timedelta(minutes=min(2 ** max(0, attempts - 1), 60))
 
 
-async def send_pdf_file(chat_id: str, *, reply_markup: Optional[dict]) -> dict:
-    """Send the lead-magnet PDF (cached file_id first, bytes as fallback).
+async def send_pdf_file(chat_id: str, *, reply_markup: Optional[dict],
+                        funnel: Optional[FunnelView] = None) -> dict:
+    """Send a funnel's lead-magnet PDF (default funnel when not given): cached
+    file_id first, bytes as fallback.
 
     The first upload is serialized: when many people finish at once only one
     upload happens, the rest reuse its file_id. Result: {"sent", "missing"?, "error"?}.
     """
-    async with db_session.SessionLocal() as db:
-        meta = await db.get(FunnelFile, LEAD_MAGNET_KEY)
+    if funnel is None:
+        async with db_session.SessionLocal() as db:
+            funnel = await funnels.default(db)
+    meta = await _pdf_meta(funnel.id)
     if meta is None:
         return {"sent": False, "missing": True}
-    caption = fit_caption(settings.FUNNEL_PDF_CAPTION)
+    caption = fit_caption(funnel.text("FUNNEL_PDF_CAPTION"))
     if meta.tg_file_id:
         result = await telegram.send_document(chat_id, meta.tg_file_id, caption=caption,
                                               reply_markup=reply_markup)
@@ -78,16 +92,15 @@ async def send_pdf_file(chat_id: str, *, reply_markup: Optional[dict]) -> dict:
         stale_file_id: Optional[str] = meta.tg_file_id
     else:
         stale_file_id = None
-    async with locks.lock("pdf-upload"):
-        async with db_session.SessionLocal() as db:
-            meta = await db.get(FunnelFile, LEAD_MAGNET_KEY)
+    async with locks.lock(f"pdf-upload:{funnel.id}"):
+        meta = await _pdf_meta(funnel.id)
         if meta is None:
             return {"sent": False, "missing": True}
         if meta.tg_file_id and meta.tg_file_id != stale_file_id:
             # Someone else's upload finished while we waited
             return await telegram.send_document(chat_id, meta.tg_file_id, caption=caption,
                                                 reply_markup=reply_markup)
-        data = await _pdf_bytes(meta.key)
+        data = await _pdf_bytes(funnel.id)
         if not data:
             return {"sent": False, "missing": True}
         result = await telegram.send_document(
@@ -97,7 +110,8 @@ async def send_pdf_file(chat_id: str, *, reply_markup: Optional[dict]) -> dict:
             # Cache only for the same file version (a re-upload clears it)
             async with db_session.SessionLocal() as db:
                 await db.execute(update(FunnelFile)
-                                 .where(FunnelFile.key == meta.key,
+                                 .where(FunnelFile.funnel_id == funnel.id,
+                                        FunnelFile.key == meta.key,
                                         FunnelFile.sha256 == meta.sha256)
                                  .values(tg_file_id=result["file_id"]))
                 await db.commit()
@@ -118,15 +132,20 @@ async def deliver_pdf(entry_id: uuid.UUID, *, notify: bool = True) -> str:
         entry = await db.get(FunnelEntry, entry_id)
         if entry is None or not entry.tg_chat_id:
             return "failed"
-        booked = await repo.active_booking(db, entry.id) is not None
-    result = await send_pdf_file(entry.tg_chat_id, reply_markup=None if booked else book_keyboard())
+        funnel = await funnels.get(db, entry.funnel_id)
+        # One interview per person, whichever funnel booked it
+        booked = await repo.person_booking(db, entry.tg_user_id) is not None \
+            if entry.tg_user_id else await repo.active_booking(db, entry.id) is not None
+    result = await send_pdf_file(entry.tg_chat_id, funnel=funnel,
+                                 reply_markup=None if booked else book_keyboard(funnel))
 
     if result.get("missing"):
         if await _set_pending(entry_id, failed=False) or notify:
             await telegram.send_message(entry.tg_chat_id, texts.PDF_PENDING)
-        await _alert_once(_NO_PDF_ALERT_KEY,
-                          "⚠️ <b>Lead-magnet PDF yuklanmagan</b>\nMijozlar qo'llanmani kutmoqda. "
-                          "Admin panel → Voronka → Sozlamalar → PDF yuklang — ular avtomatik oladi.")
+        await _alert_once(f"{_NO_PDF_ALERT_KEY}:{funnel.id}",
+                          f"⚠️ <b>Lead-magnet PDF yuklanmagan</b> («{html.escape(funnel.name)}»)\n"
+                          "Mijozlar qo'llanmani kutmoqda. Admin panel → Voronka → shu voronka → "
+                          "Sozlamalar → PDF yuklang — ular avtomatik oladi.")
         return "pending"
     if not result.get("sent"):
         if repo.is_blocked(result):
@@ -183,6 +202,7 @@ async def _mark_pdf_sent(entry_id: uuid.UUID) -> None:
             entry = await db.get(FunnelEntry, entry_id)
             if entry is None or not entry.tg_user_id:
                 return
+            funnel = await funnels.get(db, entry.funnel_id)
             lead = await repo.ensure_lead(db, entry)
             if lead.stage != "booked":
                 lead.stage = "offer"
@@ -192,7 +212,7 @@ async def _mark_pdf_sent(entry_id: uuid.UUID) -> None:
                 source += f" (@{entry.ig_username})"
             repo.log_system(
                 db, lead,
-                "🎁 Lead-magnet: qo'llanma yuborildi\n"
+                f"🎁 Lead-magnet («{funnel.name if funnel else '—'}»): qo'llanma yuborildi\n"
                 f"Manba: {source}\nIsm: {entry.full_name or '—'}\n"
                 f"Telefon: {entry.phone or '—'}\n"
                 f"Sinf: {texts.grade_display(entry.grade) or '—'}",
@@ -212,10 +232,11 @@ async def _alert_once(key: str, text: str) -> None:
         logger.warning("Funnel alert failed: {}", exc)
 
 
-async def send_sales_message(chat_id: str, message: FunnelMessage) -> dict:
-    """One sales-sequence message (optional image) with the booking button."""
+async def send_sales_message(chat_id: str, message: FunnelMessage,
+                             funnel: Optional[FunnelView] = None) -> dict:
+    """One sales-sequence message (optional image) with its funnel's booking button."""
     text = (message.text or "").strip()
-    markup = book_keyboard()
+    markup = book_keyboard(funnel)
     if not message.has_image:
         return await telegram.send_message(chat_id, text, reply_markup=markup)
 

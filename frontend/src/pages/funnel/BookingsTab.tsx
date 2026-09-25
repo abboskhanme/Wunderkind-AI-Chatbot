@@ -10,7 +10,7 @@ import { Badge, Button, Card, Empty, Input, Label, Loading, Select, Textarea } f
 import { BOOKING_STATUS_LABELS, BOOKING_STATUSES, gradeLabel } from '@/lib/labels'
 import { fmtDateTime, fmtDayTitle } from '@/lib/format'
 import { cn } from '@/lib/cn'
-import { ErrorState, LeadLink } from './shared'
+import { ErrorState, FunnelBadge, LeadLink, type FunnelTabProps } from './shared'
 
 const ymd = (d: Date) => format(d, 'yyyy-MM-dd')
 
@@ -72,7 +72,7 @@ function NoteEditor({ booking, saving, onSave }: {
   )
 }
 
-function BookingRow({ booking }: { booking: BookingOut }) {
+function BookingRow({ booking, showFunnel }: { booking: BookingOut; showFunnel: boolean }) {
   const qc = useQueryClient()
   const update = useMutation({
     mutationFn: (body: BookingPatch) => funnelApi.updateBooking(booking.id, body),
@@ -99,6 +99,7 @@ function BookingRow({ booking }: { booking: BookingOut }) {
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
           <p className="font-medium text-gray-900">{booking.full_name || 'Ismi kiritilmagan'}</p>
           {grade && <Badge>{grade}</Badge>}
+          {showFunnel && <FunnelBadge name={booking.funnel_name} />}
           {booking.reminder_sent_at && (
             <span className="inline-flex items-center gap-1 text-xs text-gray-400" title={`Eslatma yuborilgan: ${fmtDateTime(booking.reminder_sent_at)}`}>
               <BellRing className="h-3.5 w-3.5" /> Eslatildi
@@ -138,13 +139,14 @@ function BookingRow({ booking }: { booking: BookingOut }) {
   )
 }
 
-export function BookingsTab() {
+/** Bookings are global (one interview per person across funnels); the funnel is only a filter. */
+export function BookingsTab({ funnel, funnels, selectFunnel }: FunnelTabProps) {
   const [dateFrom, setDateFrom] = useState(() => ymd(new Date()))
   const [dateTo, setDateTo] = useState(() => ymd(addDays(new Date(), 7)))
   const [status, setStatus] = useState<BookingStatus | ''>('')
   const rangeOk = Boolean(dateFrom && dateTo && dateFrom <= dateTo)
 
-  const filters: BookingFilters = { date_from: dateFrom, date_to: dateTo, status }
+  const filters: BookingFilters = { funnel_id: funnel?.id, date_from: dateFrom, date_to: dateTo, status }
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['funnel', 'bookings', filters],
     queryFn: () => funnelApi.bookings(filters),
@@ -173,7 +175,14 @@ export function BookingsTab() {
   return (
     <div className="space-y-4">
       <Card className="p-3">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_auto] lg:items-end">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-[1fr_1fr_1fr_1fr_auto] lg:items-end">
+          <div>
+            <Label>Voronka</Label>
+            <Select value={funnel?.id ?? ''} onChange={(e) => selectFunnel(e.target.value || null)}>
+              <option value="">Barcha voronkalar</option>
+              {funnels.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </Select>
+          </div>
           <div>
             <Label>Sanadan</Label>
             <Input type="date" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
@@ -215,7 +224,7 @@ export function BookingsTab() {
             <span className="text-xs text-gray-500">{list.length} ta</span>
           </div>
           <ul className="divide-y divide-gray-100">
-            {list.map((b) => <BookingRow key={b.id} booking={b} />)}
+            {list.map((b) => <BookingRow key={b.id} booking={b} showFunnel={!funnel && funnels.length > 1} />)}
           </ul>
         </Card>
       ))}

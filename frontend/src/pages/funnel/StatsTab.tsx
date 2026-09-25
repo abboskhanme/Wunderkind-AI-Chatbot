@@ -9,7 +9,7 @@ import { Card, CardHeader, Empty, Loading, Select } from '@/components/ui'
 import { FUNNEL_SOURCE_LABELS, FUNNEL_STAT_LABELS } from '@/lib/labels'
 import { fmtNumber } from '@/lib/format'
 import { cn } from '@/lib/cn'
-import { Bar, ErrorState } from './shared'
+import { Bar, ErrorState, type FunnelTabProps } from './shared'
 
 const SOURCE_FILL: Record<FunnelSource, string> = {
   instagram: 'fill-pink-500',
@@ -81,18 +81,21 @@ function BySource({ rows }: { rows: FunnelStats['by_source'] }) {
   )
 }
 
-export function StatsTab() {
+export function StatsTab({ funnel }: FunnelTabProps) {
   const [days, setDays] = useState(30)
+  const funnelId = funnel?.id
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['funnel', 'stats', days],
-    queryFn: () => funnelApi.stats(days),
+    queryKey: ['funnel', 'stats', funnelId ?? 'all', days],
+    queryFn: () => funnelApi.stats(days, funnelId),
     refetchInterval: 60_000,
   })
 
   return (
     <div className="space-y-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm text-gray-500">Izohdan suhbatgacha: har bir bosqichga nechta odam yetib keldi</p>
+        <p className="text-sm text-gray-500">
+          {funnel ? `«${funnel.name}»` : 'Barcha voronkalar'}: izohdan suhbatgacha har bir bosqichga nechta odam yetib keldi
+        </p>
         <div className="w-44">
           <Select value={days} onChange={(e) => setDays(Number(e.target.value))}>
             <option value={1}>Bugun</option>

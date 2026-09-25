@@ -3,6 +3,10 @@
 Callbacks: fb:start (from the PDF / sales messages), fb:d:<YYYYMMDD>,
 fb:t:<YYYYMMDDHHMM>, fb:back, fb:cancel, fb:resched. Dates and times are local
 (TIMEZONE). Taking a slot re-checks capacity under a per-slot asyncio lock.
+
+Callbacks carry no funnel (§11.2): they act on the person's booking entry — the
+one holding their interview, else the one that most recently sent a PDF. A
+person has ONE scheduled interview across all funnels; a new slot reschedules.
 """
 from __future__ import annotations
 
@@ -15,7 +19,7 @@ from sqlalchemy import func, select
 
 from app.config import settings
 from app.db import session as db_session
-from app.funnel import delivery, locks, repo, slots, texts
+from app.funnel import delivery, funnels, locks, repo, slots, texts
 from app.models.funnel import FunnelEntry, InterviewBooking
 from app.telegram import notifier
 from app.telegram_business.client import telegram
@@ -91,8 +95,8 @@ async def _taken(cfg: slots.SlotConfig, now: datetime):
 # --------------------------------------------------------------------------- #
 async def handle(user_id: str, chat_id: str, message_id: object, data: str) -> None:
     async with db_session.SessionLocal() as db:
-        entry = await repo.entry_by_tg(db, user_id)
-        current = await repo.active_booking(db, entry.id) if entry else None
+        entry = await repo.booking_entry(db, user_id)
+        current = await repo.person_booking(db, user_id)
     if entry is None:
         await telegram.send_message(chat_id, texts.START_FIRST)
         return
@@ -187,7 +191,8 @@ async def take_slot(entry: FunnelEntry, chat_id: str, message_id: object, start:
 async def _book(db, entry: FunnelEntry, start_utc: datetime,
                 capacity: int) -> tuple[str, Optional[datetime]]:
     """Inside the slot lock. Returns ("booked" | "already" | "full", previous start)."""
-    current = await repo.active_booking(db, entry.id)
+    current = (await repo.person_booking(db, entry.tg_user_id) if entry.tg_user_id
+               else await repo.active_booking(db, entry.id))
     if current is not None and _same(current.starts_at, start_utc):
         return "already", None
     taken = (await db.execute(
@@ -201,6 +206,10 @@ async def _book(db, entry: FunnelEntry, start_utc: datetime,
         previous = current.starts_at
         current.status = "cancelled"
         current.rescheduled = True   # not a real cancellation (stats)
+        if current.entry_id != entry.id:   # booked through another funnel
+            other = await db.get(FunnelEntry, current.entry_id)
+            if other is not None:
+                repo.touch(other)
         await db.flush()             # free the one-scheduled-per-entry index first
     booking = InterviewBooking(entry_id=entry.id, starts_at=start_utc, status="scheduled")
     db.add(booking)
@@ -220,23 +229,26 @@ async def _book(db, entry: FunnelEntry, start_utc: datetime,
 async def cancel(entry: FunnelEntry, chat_id: str) -> None:
     cancelled_at: Optional[datetime] = None
     async with db_session.SessionLocal() as db:
-        fresh = await db.get(FunnelEntry, entry.id)
-        current = await repo.active_booking(db, entry.id) if fresh else None
-        if fresh is not None and current is not None:
+        funnel = await funnels.get(db, entry.funnel_id)
+        current = (await repo.person_booking(db, entry.tg_user_id) if entry.tg_user_id
+                   else await repo.active_booking(db, entry.id))
+        owner = await db.get(FunnelEntry, current.entry_id) if current else None
+        if owner is not None and current is not None:
             current.status = "cancelled"
             cancelled_at = current.starts_at
-            lead = await repo.ensure_lead(db, fresh)
-            values = texts.booking_values(fresh.full_name, current.starts_at)
+            lead = await repo.ensure_lead(db, owner)
+            values = texts.booking_values(owner.full_name, current.starts_at)
             repo.log_system(db, lead, f"❌ Suhbat bekor qilindi (mijoz): {values['date']}, "
                                       f"{values['time']}", step="cancelled")
-            repo.touch(fresh)
+            repo.touch(owner)
             await db.commit()
     if cancelled_at is None:
         await telegram.send_message(chat_id, texts.NOTHING_TO_CANCEL,
-                                    reply_markup=delivery.book_keyboard())
+                                    reply_markup=delivery.book_keyboard(funnel))
         return
-    await telegram.send_message(chat_id, texts.CANCELLED, reply_markup=delivery.book_keyboard())
-    await _alert("❌ <b>Suhbat bekor qilindi</b>", entry, cancelled_at)
+    await telegram.send_message(chat_id, texts.CANCELLED,
+                                reply_markup=delivery.book_keyboard(funnel))
+    await _alert("❌ <b>Suhbat bekor qilindi</b>", owner or entry, cancelled_at)
 
 
 def _same(a: datetime, b: datetime) -> bool:
@@ -255,6 +267,10 @@ async def _alert(title: str, entry: FunnelEntry, starts_at: datetime, *,
     source = texts.SOURCE_LABELS.get(entry.source, entry.source)
     if entry.ig_username:
         source += f" · @{entry.ig_username}"
+    async with db_session.SessionLocal() as db:
+        funnel = await funnels.get(db, entry.funnel_id)
+    if funnel is not None:
+        source += f" · «{funnel.name}»"
     lines = [
         title,
         f"👤 {html.escape(entry.full_name or '—')}",

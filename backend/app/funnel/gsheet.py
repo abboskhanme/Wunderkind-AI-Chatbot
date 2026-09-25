@@ -32,13 +32,16 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db import session as db_session
-from app.funnel import repo, texts
+from app.funnel import funnels, repo, texts
 from app.models.funnel import FunnelEntry, InterviewBooking
 
 HEADER = ["Sana", "Manba", "Ism-familiya", "Telefon", "Sinf", "Telegram", "Telegram ID",
           "Instagram", "Qo'llanma", "Suhbat sanasi", "Suhbat vaqti", "Suhbat holati",
-          "Yangilangan", "ID"]
-_LAST_COLUMN = "N"                     # 14 columns; N = ID
+          "Yangilangan", "ID", "Voronka"]
+# "Voronka" (funnel name) is appended AFTER "ID" so existing layouts do not shift
+_LAST_COLUMN = "O"                     # 15 columns; N = ID, O = funnel
+_NARROW_LAST_COLUMN = "N"              # when column O holds the client's own data
+_FUNNEL_HEADER = "Voronka"
 _ID_COLUMN = "N"
 _SOURCE_COLUMN = "B"
 MERGED_LABEL = "Birlashtirildi"
@@ -52,6 +55,8 @@ BATCH = 50
 _transport: Optional[httpx.AsyncBaseTransport] = None
 _token_cache: dict[str, tuple[str, float]] = {}
 _ready_sheets: set[str] = set()        # "<spreadsheet>|<worksheet>" with header checked
+_o_taken: set[str] = set()             # ready sheets whose column O is NOT ours
+_O_TAKEN_ALERT_KEY = "fnl:alert:sheet-column-o"
 
 
 class SheetError(Exception):
@@ -160,11 +165,43 @@ async def _ensure_sheet(http: httpx.AsyncClient, account: dict, sheet: str) -> s
                     json={"requests": [{"addSheet": {"properties": {"title": _worksheet()}}}]})
     header = await _call(http, account, "GET", _values_url(sheet, f"A1:{_LAST_COLUMN}1"))
     current = (header.get("values") or [[]])[0]
-    if current[:len(HEADER)] != HEADER:      # empty sheet, or an older header
-        await _call(http, account, "PUT", _values_url(sheet, f"A1:{_LAST_COLUMN}1"),
-                    params={"valueInputOption": "RAW"}, json={"values": [HEADER]})
+    column_o = str(current[len(HEADER) - 1]).strip() if len(current) >= len(HEADER) else ""
+    if column_o and column_o != _FUNNEL_HEADER:
+        # The client uses column O for something else: never overwrite it
+        _o_taken.add(ready_key)
+        wanted, last = HEADER[:-1], _NARROW_LAST_COLUMN
+        await _alert_column_o_taken(column_o)
+    else:
+        _o_taken.discard(ready_key)
+        wanted, last = HEADER, _LAST_COLUMN
+    if current[:len(wanted)] != wanted:      # empty sheet, or an older header
+        await _call(http, account, "PUT", _values_url(sheet, f"A1:{last}1"),
+                    params={"valueInputOption": "RAW"}, json={"values": [wanted]})
     _ready_sheets.add(ready_key)
     return title
+
+
+async def _alert_column_o_taken(found: str) -> None:
+    from app.state.store import store
+    from app.telegram import notifier
+
+    try:
+        if await store.seen_once(_O_TAKEN_ALERT_KEY, 24 * 3600):
+            return
+        await notifier.send_text(
+            "⚠️ <b>Google Sheets: «O» ustuni band</b>\n"
+            f"U yerda «{found[:40]}» turibdi — «{_FUNNEL_HEADER}» ustuni yozilmayapti "
+            "(qolgan ustunlar yozilyapti). O ustunini bo'shating yoki "
+            f"«{_FUNNEL_HEADER}» deb nomlang.")
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Sheets column-O alert failed: {}", exc)
+
+
+def _width(sheet: str) -> tuple[int, str]:
+    """(columns, last column letter) this sheet may be written with."""
+    if f"{sheet}|{_worksheet()}" in _o_taken:
+        return len(HEADER) - 1, _NARROW_LAST_COLUMN
+    return len(HEADER), _LAST_COLUMN
 
 
 def _fmt(dt: Optional[datetime], pattern: str = "%Y-%m-%d %H:%M") -> str:
@@ -172,7 +209,7 @@ def _fmt(dt: Optional[datetime], pattern: str = "%Y-%m-%d %H:%M") -> str:
 
 
 def entry_row(entry: FunnelEntry, booking: Optional[InterviewBooking],
-              now: Optional[datetime] = None) -> list[str]:
+              now: Optional[datetime] = None, funnel_name: str = "") -> list[str]:
     """One sheet row in HEADER order (RAW strings: "+998…" must stay text)."""
     if entry.pdf_sent_at:
         guide = "Yuborildi"
@@ -195,6 +232,7 @@ def entry_row(entry: FunnelEntry, booking: Optional[InterviewBooking],
         texts.BOOKING_LABELS.get(booking.status, booking.status) if booking else "",
         _fmt(now or repo.now()),
         str(entry.id) if entry.id else "",
+        funnel_name,
     ]
 
 
@@ -218,9 +256,10 @@ async def _row_index(http: httpx.AsyncClient, account: dict, sheet: str) -> dict
 
 async def _put_row(http: httpx.AsyncClient, account: dict, sheet: str, number: int,
                    row: list[str]) -> None:
+    size, last = _width(sheet)
     await _call(http, account, "PUT",
-                _values_url(sheet, f"A{number}:{_LAST_COLUMN}{number}"),
-                params={"valueInputOption": "RAW"}, json={"values": [row]})
+                _values_url(sheet, f"A{number}:{last}{number}"),
+                params={"valueInputOption": "RAW"}, json={"values": [row[:size]]})
 
 
 async def _write(http: httpx.AsyncClient, account: dict, sheet: str, entry: FunnelEntry,
@@ -238,10 +277,11 @@ async def _write(http: httpx.AsyncClient, account: dict, sheet: str, entry: Funn
     if number is not None:
         await _put_row(http, account, sheet, number, row)
         return number
+    size, last = _width(sheet)
     body = await _call(http, account, "POST",
-                       _values_url(sheet, f"A:{_LAST_COLUMN}", ":append"),
+                       _values_url(sheet, f"A:{last}", ":append"),
                        params={"valueInputOption": "RAW", "insertDataOption": "INSERT_ROWS"},
-                       json={"values": [row]})
+                       json={"values": [row[:size]]})
     number = row_number(str((body.get("updates") or {}).get("updatedRange") or ""))
     if number is None:
         raise SheetError("Google qator raqamini qaytarmadi")
@@ -265,6 +305,7 @@ async def sync_dirty(limit: int = BATCH) -> int:
             .order_by(FunnelEntry.updated_at).limit(limit)
         )).scalars().all())
         bookings = await repo.latest_bookings(db, [e.id for e in entries])
+        names = {f.id: f.name for f in await funnels.load_all(db)}
     if not entries:
         return 0
     written = 0
@@ -275,8 +316,9 @@ async def sync_dirty(limit: int = BATCH) -> int:
             index = await _row_index(http, account, sheet)
             for entry in entries:
                 try:
-                    number = await _write(http, account, sheet, entry,
-                                          entry_row(entry, bookings.get(entry.id)), index)
+                    row = entry_row(entry, bookings.get(entry.id),
+                                    funnel_name=names.get(entry.funnel_id, ""))
+                    number = await _write(http, account, sheet, entry, row, index)
                 except SheetError as exc:
                     if _stops_batch(exc):
                         raise
@@ -321,6 +363,7 @@ async def reset_target() -> int:
     """GSHEET_SPREADSHEET_ID / GSHEET_WORKSHEET changed: rows in the old sheet mean
     nothing in the new one — forget them and export everything again."""
     _ready_sheets.clear()
+    _o_taken.clear()
     async with db_session.SessionLocal() as db:
         result = await db.execute(update(FunnelEntry).values(
             sheet_row=None, sheet_dirty=True, updated_at=FunnelEntry.updated_at))

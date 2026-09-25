@@ -1,5 +1,6 @@
-"""Instagram side of the funnel (SPEC §10.1): keyword comments, the follow gate
-and the Telegram deep link.
+"""Instagram side of the funnels (SPEC §10.1, §11.2): keyword comments, the
+follow gate and the Telegram deep link. Each comment/DM is routed to one funnel
+(keywords + optional post filter); that funnel's texts are used.
 
 `handle_event()` is called by the Instagram webhook before the AI pipeline:
 True = the funnel took the event (the AI never sees it).
@@ -11,14 +12,14 @@ which pauses the AI in that chat.
 from __future__ import annotations
 
 import random
-
 from typing import Optional
 
 from loguru import logger
 
 from app.config import settings
 from app.db import session as db_session
-from app.funnel import keywords, locks, repo, texts
+from app.funnel import funnels, locks, repo, texts
+from app.funnel.funnels import FunnelView
 from app.instagram.client import instagram
 from app.instagram.models import IncomingEvent, _attachment_text
 from app.leads import client as leads_client
@@ -45,36 +46,47 @@ async def _handle(event: IncomingEvent) -> bool:
     if event.channel != "instagram" or not event.sender_id:
         return False
     if event.kind == "comment":
-        # Comments stay broad: any comment mentioning the keyword
-        if not (settings.FUNNEL_ENABLED and event.comment_id and keywords.matches(event.text)):
+        # Comments stay broad: any comment mentioning a funnel's keyword
+        if not (settings.FUNNEL_ENABLED and event.comment_id):
             return False
-        if not await _first_time(event):
-            return True
-        await _on_comment(event)
+        funnel = await funnels.match_comment(await funnels.load_all(), event.text,
+                                             event.media_id)
+        if funnel is None:
+            return False
+        if await _first_time(event):
+            await _on_comment(event, funnel)
         return True
     if event.kind != "dm" or await _operator_handling(event):
         return False
 
     async with db_session.SessionLocal() as db:
-        entry = await repo.entry_by_ig(db, event.sender_id)
-    if entry is not None and entry.step == "ig_waiting_follow":
+        latest = await repo.entry_by_ig(db, event.sender_id)
+    # A DM is a follow-check answer only if the person's LATEST entry (any funnel)
+    # waits for it — an older waiting entry must not swallow later DMs
+    if latest is not None and latest.step == "ig_waiting_follow":
         if await _first_time(event):
             await _log_dm(event)
             await _on_waiting_dm(event)
         return True
-    # DMs are strict: only a (nearly) bare keyword starts the funnel; a real
+    # DMs are strict: only a (nearly) bare keyword starts a funnel; a real
     # question that mentions it ("Wunderkind'da narxlar qancha?") is for the AI
-    if not (settings.FUNNEL_ENABLED and keywords.is_keyword_request(event.text)):
+    if not settings.FUNNEL_ENABLED:
         return False
+    funnel = funnels.match_direct(await funnels.load_all(), event.text, strict=True)
+    if funnel is None:
+        return False
+    async with db_session.SessionLocal() as db:
+        entry = await repo.entry_by_ig(db, event.sender_id, funnel.id)
     if entry is None:
         if await _first_time(event):
             await _log_dm(event)
-            await _start_in_dm(event)
+            await _start_in_dm(event, funnel)
         return True
     if entry.step == "ig_link_sent":         # asked again — send the link again
         if await _first_time(event):
             await _log_dm(event)
-            await _send_link(event.sender_id, {"id": event.sender_id}, entry.start_token)
+            await _send_link(event.sender_id, {"id": event.sender_id}, entry.start_token,
+                             funnel)
         return True
     return False       # already in Telegram: free questions go to the AI
 
@@ -107,13 +119,14 @@ async def _first_time(event: IncomingEvent) -> bool:
 # --------------------------------------------------------------------------- #
 # Flows
 # --------------------------------------------------------------------------- #
-async def _on_comment(event: IncomingEvent) -> None:
+async def _on_comment(event: IncomingEvent, funnel: FunnelView) -> None:
     """Public reply + one private reply: the link if already passed/following, else
     the welcome asking to follow."""
     igsid = event.sender_id
     async with locks.lock(f"ig:{igsid}"):
-        entry = await _get_or_create(igsid, event.username, comment_id=event.comment_id)
-        await _public_reply(event)
+        entry = await _get_or_create(igsid, event.username, funnel,
+                                     comment_id=event.comment_id)
+        await _public_reply(event, funnel)
         recipient = {"comment_id": event.comment_id}
         passed = entry.step != "ig_waiting_follow"
         follows: Optional[bool] = None
@@ -122,20 +135,21 @@ async def _on_comment(event: IncomingEvent) -> None:
             # messaged us yet, so the profile API often cannot answer here
             follows = (await _follow_status(entry)) is True
         if passed or follows or not settings.FUNNEL_IG_REQUIRE_FOLLOW:
-            if await _send_link(igsid, recipient, entry.start_token):
+            if await _send_link(igsid, recipient, entry.start_token, funnel):
                 await _link_sent(entry, followed=bool(follows))
         else:
-            await _send_quick(igsid, recipient, settings.FUNNEL_IG_DM_WELCOME)
+            await _send_quick(igsid, recipient, funnel.text("FUNNEL_IG_DM_WELCOME"))
 
 
-async def _start_in_dm(event: IncomingEvent) -> None:
-    """Keyword in a DM from someone new: same gate, no comment needed."""
+async def _start_in_dm(event: IncomingEvent, funnel: FunnelView) -> None:
+    """Keyword in a DM from someone new to this funnel: same gate, no comment needed."""
     igsid = event.sender_id
     async with locks.lock(f"ig:{igsid}"):
-        entry = await _get_or_create(igsid, event.username)
+        entry = await _get_or_create(igsid, event.username, funnel)
         if entry.step != "ig_waiting_follow":
             return
-        await _gate(entry, count=False, not_following_text=settings.FUNNEL_IG_DM_WELCOME)
+        await _gate(entry, funnel, count=False,
+                    not_following_text=funnel.text("FUNNEL_IG_DM_WELCOME"))
 
 
 async def _on_waiting_dm(event: IncomingEvent) -> None:
@@ -143,12 +157,15 @@ async def _on_waiting_dm(event: IncomingEvent) -> None:
     async with locks.lock(f"ig:{event.sender_id}"):
         async with db_session.SessionLocal() as db:
             entry = await repo.entry_by_ig(db, event.sender_id)
-        if entry is None or entry.step != "ig_waiting_follow":
+            funnel = await funnels.get(db, entry.funnel_id) if entry else None
+        if entry is None or funnel is None or entry.step != "ig_waiting_follow":
             return
-        await _gate(entry, count=True, not_following_text=settings.FUNNEL_IG_NOT_FOLLOWING)
+        await _gate(entry, funnel, count=True,
+                    not_following_text=funnel.text("FUNNEL_IG_NOT_FOLLOWING"))
 
 
-async def _gate(entry: FunnelEntry, *, count: bool, not_following_text: str) -> None:
+async def _gate(entry: FunnelEntry, funnel: FunnelView, *, count: bool,
+                not_following_text: str) -> None:
     """Follow check in a DM: follows → link; not → ask again (max 5, then link
     anyway); cannot tell → link if FAIL_OPEN, else "try later"."""
     igsid = str(entry.ig_user_id)
@@ -168,7 +185,7 @@ async def _gate(entry: FunnelEntry, *, count: bool, not_following_text: str) -> 
     give_link = (follows is True or checks >= MAX_FOLLOW_CHECKS
                  or (follows is None and settings.FUNNEL_IG_FOLLOW_FAIL_OPEN))
     if give_link:
-        if await _send_link(igsid, recipient, entry.start_token):
+        if await _send_link(igsid, recipient, entry.start_token, funnel):
             await _link_sent(entry, followed=follows is True)
     elif follows is False:
         await _send_quick(igsid, recipient, not_following_text)
@@ -179,17 +196,18 @@ async def _gate(entry: FunnelEntry, *, count: bool, not_following_text: str) -> 
 # --------------------------------------------------------------------------- #
 # Helpers
 # --------------------------------------------------------------------------- #
-async def _get_or_create(igsid: str, username: Optional[str], *,
+async def _get_or_create(igsid: str, username: Optional[str], funnel: FunnelView, *,
                          comment_id: Optional[str] = None) -> FunnelEntry:
-    """Reuse the person's entry (one per Instagram user), else start one."""
+    """Reuse the person's entry in this funnel, else start one."""
     async with db_session.SessionLocal() as db:
-        entry = await repo.entry_by_ig(db, igsid)
+        entry = await repo.entry_by_ig(db, igsid, funnel.id)
         if entry is None:
-            entry = FunnelEntry(source="instagram", start_token=repo.new_token(),
-                                ig_user_id=igsid, step="ig_waiting_follow", follow_checks=0,
-                                opted_out=False, sheet_dirty=True)
+            entry = FunnelEntry(funnel_id=funnel.id, source="instagram",
+                                start_token=repo.new_token(), ig_user_id=igsid,
+                                step="ig_waiting_follow", follow_checks=0, opted_out=False,
+                                sheet_dirty=True)
             db.add(entry)
-            logger.info("Funnel: new Instagram entry {}", igsid)
+            logger.info("Funnel {}: new Instagram entry {}", funnel.slug, igsid)
         if username:
             entry.ig_username = username
         if comment_id:
@@ -231,8 +249,8 @@ async def _link_sent(entry: FunnelEntry, *, followed: bool) -> None:
         await db.commit()
 
 
-async def _public_reply(event: IncomingEvent) -> None:
-    variants = [v.strip() for v in (settings.FUNNEL_IG_COMMENT_REPLY or "").split("|")]
+async def _public_reply(event: IncomingEvent, funnel: FunnelView) -> None:
+    variants = [v.strip() for v in funnel.text("FUNNEL_IG_COMMENT_REPLY").split("|")]
     variants = [v for v in variants if v]
     if not variants:
         return
@@ -257,7 +275,7 @@ async def _send_quick(igsid: str, recipient: dict, text: str) -> bool:
     return bool(result.get("sent"))
 
 
-async def _send_link(igsid: str, recipient: dict, token: str) -> bool:
+async def _send_link(igsid: str, recipient: dict, token: str, funnel: FunnelView) -> bool:
     """FUNNEL_IG_LINK_MESSAGE with a web_url button; plain text + URL as fallback."""
     url = await repo.bot_link(token)
     if not url:
@@ -266,7 +284,7 @@ async def _send_link(igsid: str, recipient: dict, token: str) -> bool:
         await store.mark_sent(igsid, texts.IG_LINK_UNAVAILABLE)
         await instagram.send_message_to(recipient, {"text": texts.IG_LINK_UNAVAILABLE})
         return False
-    text = settings.FUNNEL_IG_LINK_MESSAGE.strip()
+    text = funnel.text("FUNNEL_IG_LINK_MESSAGE").strip()
     await store.mark_sent(igsid, text)
     await store.mark_sent(igsid, _TEMPLATE_ECHO)
     result = await instagram.send_button_template(

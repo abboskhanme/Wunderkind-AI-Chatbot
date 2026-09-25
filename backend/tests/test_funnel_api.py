@@ -7,6 +7,7 @@ from datetime import datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 import pytest
+from sqlalchemy import select
 
 from app.config import settings
 from app.models.funnel import FunnelEntry, InterviewBooking
@@ -163,7 +164,8 @@ def test_reupload_clears_telegram_file_id(client, admin, database):
 
     async def set_file_id():
         async with database() as s:
-            (await s.get(FunnelFile, "lead_magnet")).tg_file_id = "OLD"
+            (await s.execute(select(FunnelFile).where(FunnelFile.key == "lead_magnet"))
+             ).scalar_one().tg_file_id = "OLD"
             await s.commit()
     asyncio.run(set_file_id())
     client.put("/api/funnel/lead-magnet", headers=admin,
@@ -193,7 +195,9 @@ def funnel_data(database):
     tomorrow = datetime.now(TZ).date() + timedelta(days=1)
     first = InterviewBooking(entry_id=done.id, status="cancelled",
                              starts_at=local_utc(tomorrow.year, tomorrow.month, tomorrow.day, 9),
-                             created_at=now - timedelta(minutes=5))
+                             # older than `current`, but the same local day even
+                             # right after midnight (per-day stats are asserted)
+                             created_at=now - timedelta(milliseconds=1))
     current = InterviewBooking(entry_id=done.id, status="scheduled", note="Qo'ng'iroq qilindi",
                                starts_at=local_utc(tomorrow.year, tomorrow.month, tomorrow.day, 10))
     db_add(database, first, current)

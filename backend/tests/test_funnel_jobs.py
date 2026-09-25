@@ -238,8 +238,9 @@ class FakeGoogle:
         number = int(row)
         if number in self.fail_rows:
             return httpx.Response(400, json={"error": {"message": "range exceeds grid"}})
-        if col == "A":
-            self.rows[number] = body["values"][0]
+        if col == "A":               # like Google: cells right of the range are kept
+            new = body["values"][0]
+            self.rows[number] = new + self.rows.get(number, [])[len(new):]
         else:
             cells = self.rows.setdefault(number, [""] * 14)
             cells[ord(col) - ord("A")] = body["values"][0][0]
@@ -268,11 +269,13 @@ def test_entry_row_mapping():
                         tg_username="malika", tg_user_id="777", ig_username="mama_ali",
                         created_at=at_local(2030, 3, 5, 9, 15), pdf_sent_at=NOON)
     item = InterviewBooking(starts_at=at_local(2030, 3, 7, 10, 30), status="attended")
-    row = gsheet.entry_row(entry, item, now=at_local(2030, 3, 7, 11))
+    row = gsheet.entry_row(entry, item, now=at_local(2030, 3, 7, 11),
+                           funnel_name="Asosiy voronka")
     assert row == ["2030-03-05 09:15", "Instagram", "Aliyeva Malika", "+998901234567",
                    "5-sinf", "@malika", "777", "@mama_ali", "Yuborildi", "2030-03-07",
-                   "10:30", "Keldi", "2030-03-07 11:00", str(entry_id)]
-    assert len(row) == len(gsheet.HEADER) and gsheet.HEADER[-1] == "ID"
+                   "10:30", "Keldi", "2030-03-07 11:00", str(entry_id), "Asosiy voronka"]
+    assert len(row) == len(gsheet.HEADER)
+    assert gsheet.HEADER[13:] == ["ID", "Voronka"]      # appended after ID: no layout shift
     bare = FunnelEntry(source="telegram_channel", start_token="t2", step="pdf_pending",
                        created_at=NOON)
     assert gsheet.entry_row(bare, None)[1] == "Telegram kanal"
@@ -310,6 +313,33 @@ def test_sheet_outbox_appends_then_updates_row(database, google):
     assert not [c for c in google.calls if ":append" in c[1]]
     # sheet structure checked once per process; only the ID column is read again
     assert [c[1].rsplit("!", 1)[-1] for c in google.calls if c[0] == "GET"] == ["N:N"]
+
+
+def test_foreign_column_o_is_never_overwritten(database, google, fake_tg):
+    """Column O is reserved for "Voronka"; if the client already uses it, rows are
+    written A:N only and staff get one alert."""
+    google.rows[1] = gsheet.HEADER[:-1] + ["Izoh"]
+    google.rows[2] = ["eski"] * 13 + ["", "menejer izohi"]
+    entry = pdf_entry("24", NOON, sheet_dirty=True)
+    db_add(database, entry)
+    assert run(gsheet.sync_dirty()) == 1
+    assert google.rows[1][-1] == "Izoh" and google.rows[2][-1] == "menejer izohi"
+    row = google.ids()[str(entry.id)]
+    assert len(google.rows[row]) == 14                               # no "Voronka" value
+    append = [c for c in google.calls if ":append" in c[1]][0]
+    assert "'Leadlar'!A:N" in append[1] and len(append[2]["values"][0]) == 14
+    assert "«O» ustuni band" in fake_tg.of("alert")[-1]["text"]
+    _touch(entry.id, grade="6")
+    run(gsheet.sync_dirty())
+    assert len(google.rows[row]) == 14 and google.rows[1][-1] == "Izoh"
+    assert len(fake_tg.of("alert")) == 1                             # rate-limited
+
+
+def test_voronka_header_is_written_into_an_empty_column_o(database, google):
+    google.rows[1] = gsheet.HEADER[:-1]                              # older 14-column header
+    db_add(database, pdf_entry("25", NOON, sheet_dirty=True))
+    run(gsheet.sync_dirty())
+    assert google.rows[1] == gsheet.HEADER and google.rows[2][-1] == "Asosiy voronka"
 
 
 def test_rows_found_by_id_after_the_sheet_was_sorted(database, google):

@@ -18,7 +18,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.funnel import texts
 from app.leads import client as leads_client
 from app.models.funnel import (
-    START_TOKEN_LENGTH, FunnelDelivery, FunnelEntry, InterviewBooking,
+    COLLECTION_STEPS, START_TOKEN_LENGTH, FunnelDelivery, FunnelEntry, InterviewBooking,
 )
 from app.models.lead import CLOSED_STATUSES, STATUS_LABELS, Lead, LeadMessage
 
@@ -41,10 +41,71 @@ def touch(entry: FunnelEntry) -> None:
     entry.updated_at = now()
 
 
-async def entry_by_tg(db: AsyncSession, tg_user_id: str) -> Optional[FunnelEntry]:
-    return (await db.execute(
+# --- Telegram person -> entries (one per funnel, SPEC §11.1) ---------------------
+async def entry_by_tg(db: AsyncSession, tg_user_id: str,
+                      funnel_id: Optional[uuid.UUID] = None) -> Optional[FunnelEntry]:
+    """With `funnel_id`: the person's entry in that funnel. Without: the person's
+    most recently touched entry in any funnel."""
+    q = select(FunnelEntry).where(FunnelEntry.tg_user_id == str(tg_user_id))
+    if funnel_id is not None:
+        q = q.where(FunnelEntry.funnel_id == funnel_id)
+    return (await db.execute(q.order_by(FunnelEntry.updated_at.desc()).limit(1))
+            ).scalar_one_or_none()
+
+
+async def entries_by_tg(db: AsyncSession, tg_user_id: str) -> list[FunnelEntry]:
+    return list((await db.execute(
         select(FunnelEntry).where(FunnelEntry.tg_user_id == str(tg_user_id))
+        .order_by(FunnelEntry.updated_at.desc())
+    )).scalars().all())
+
+
+async def current_entry(db: AsyncSession, tg_user_id: str) -> Optional[FunnelEntry]:
+    """The entry whose questions the person is answering: the most recently
+    touched one in a collection step (§11.2)."""
+    return (await db.execute(
+        select(FunnelEntry).where(FunnelEntry.tg_user_id == str(tg_user_id),
+                                  FunnelEntry.step.in_(COLLECTION_STEPS))
+        .order_by(FunnelEntry.updated_at.desc()).limit(1)
     )).scalar_one_or_none()
+
+
+async def person_booking(db: AsyncSession,
+                         tg_user_id: str) -> Optional[InterviewBooking]:
+    """The person's one `scheduled` interview, whichever funnel booked it."""
+    return (await db.execute(
+        select(InterviewBooking).join(FunnelEntry, FunnelEntry.id == InterviewBooking.entry_id)
+        .where(FunnelEntry.tg_user_id == str(tg_user_id),
+               InterviewBooking.status == "scheduled")
+        .order_by(InterviewBooking.created_at.desc()).limit(1)
+    )).scalar_one_or_none()
+
+
+async def booking_entry(db: AsyncSession, tg_user_id: str) -> Optional[FunnelEntry]:
+    """The entry booking buttons act on (callbacks carry no funnel): the one with
+    the scheduled interview, else the latest to receive a PDF, else the latest."""
+    booking = await person_booking(db, tg_user_id)
+    if booking is not None:
+        return await db.get(FunnelEntry, booking.entry_id)
+    got_pdf = (await db.execute(
+        select(FunnelEntry).where(FunnelEntry.tg_user_id == str(tg_user_id),
+                                  FunnelEntry.pdf_sent_at.is_not(None))
+        .order_by(FunnelEntry.pdf_sent_at.desc()).limit(1)
+    )).scalar_one_or_none()
+    return got_pdf or await entry_by_tg(db, tg_user_id)
+
+
+async def prefill_contact(db: AsyncSession, entry: FunnelEntry) -> None:
+    """A person entering another funnel is not asked their name/phone again."""
+    if entry.full_name and entry.phone or not entry.tg_user_id:
+        return
+    for other in await entries_by_tg(db, entry.tg_user_id):
+        if other.id == entry.id:
+            continue
+        entry.full_name = entry.full_name or other.full_name
+        entry.phone = entry.phone or other.phone
+        if entry.full_name and entry.phone:
+            return
 
 
 async def entry_by_token(db: AsyncSession, token: str) -> Optional[FunnelEntry]:
@@ -53,13 +114,15 @@ async def entry_by_token(db: AsyncSession, token: str) -> Optional[FunnelEntry]:
     )).scalar_one_or_none()
 
 
-async def entry_by_ig(db: AsyncSession, ig_user_id: str) -> Optional[FunnelEntry]:
-    """The person's entry. ig_user_id is not unique in the schema, so take the
-    newest defensively (a merge keeps exactly one)."""
-    return (await db.execute(
-        select(FunnelEntry).where(FunnelEntry.ig_user_id == str(ig_user_id))
-        .order_by(FunnelEntry.created_at.desc()).limit(1)
-    )).scalar_one_or_none()
+# --- Instagram person -> entries ----------------------------------------------------
+async def entry_by_ig(db: AsyncSession, ig_user_id: str,
+                      funnel_id: Optional[uuid.UUID] = None) -> Optional[FunnelEntry]:
+    """The person's entry (in `funnel_id`, or the newest in any funnel)."""
+    q = select(FunnelEntry).where(FunnelEntry.ig_user_id == str(ig_user_id))
+    if funnel_id is not None:
+        q = q.where(FunnelEntry.funnel_id == funnel_id)
+    return (await db.execute(q.order_by(FunnelEntry.updated_at.desc()).limit(1))
+            ).scalar_one_or_none()
 
 
 async def active_booking(db: AsyncSession, entry_id: uuid.UUID) -> Optional[InterviewBooking]:

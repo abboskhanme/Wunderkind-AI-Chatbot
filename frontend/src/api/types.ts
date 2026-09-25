@@ -273,6 +273,8 @@ export interface BookingOut {
   note: string | null
   reminder_sent_at: string | null
   created_at: string
+  funnel_id: string
+  funnel_name: string | null
 }
 
 export interface BookingPatch {
@@ -295,6 +297,8 @@ export interface FunnelEntryOut {
   booking: BookingOut | null
   messages_sent: number
   created_at: string
+  funnel_id: string
+  funnel_name: string | null
 }
 
 export interface FunnelEntryList {
@@ -309,6 +313,7 @@ export interface FunnelSlot {
 
 export interface FunnelMessageOut {
   id: string
+  funnel_id: string
   sort_order: number
   text: string
   delay_minutes: number
@@ -346,4 +351,44 @@ export interface TestMessageInput {
 export interface SendResult {
   sent: boolean
   error?: string
+}
+
+// --- Multiple funnels (docs/SPEC.md section 11.3) ---------------------------------
+
+export interface FunnelOut {
+  id: string
+  name: string
+  slug: string
+  is_active: boolean
+  is_default: boolean
+  /** Comma separated; empty on the default funnel = global FUNNEL_KEYWORDS */
+  keywords: string
+  /** Comma separated media ids / permalink shortcodes; empty = any post */
+  ig_media_ids: string
+  /** Per-funnel overrides of FUNNEL_TEXT_KEYS; missing/empty = global setting */
+  texts: Record<string, string>
+  sort_order: number
+  links: { telegram_channel: string | null; telegram_direct: string | null }
+  stats: { entries: number; pdf_sent: number; booked: number }
+  has_pdf: boolean
+  created_at: string
+}
+
+export interface FunnelCreate {
+  name: string
+  slug?: string
+  keywords: string
+  ig_media_ids?: string
+  is_active?: boolean
+  texts?: Record<string, string>
+  copy_from_id?: string
+}
+
+export interface FunnelPatch {
+  name?: string
+  slug?: string
+  is_active?: boolean
+  keywords?: string
+  ig_media_ids?: string
+  texts?: Record<string, string>
 }

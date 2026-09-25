@@ -7,7 +7,7 @@ import type { FunnelEntryOut, FunnelSource, FunnelStep } from '@/api/types'
 import { Badge, Button, Card, Empty, Input, Loading, Select } from '@/components/ui'
 import { FUNNEL_SOURCE_LABELS, FUNNEL_SOURCES, FUNNEL_STEP_LABELS, FUNNEL_STEPS, gradeLabel } from '@/lib/labels'
 import { fmtNumber } from '@/lib/format'
-import { BookingStatusBadge, ErrorState, LeadLink, SourceBadge, StepBadge } from './shared'
+import { BookingStatusBadge, ErrorState, FunnelBadge, LeadLink, SourceBadge, StepBadge, type FunnelTabProps } from './shared'
 
 const PAGE_SIZE = 50
 
@@ -29,7 +29,8 @@ function Person({ e }: { e: FunnelEntryOut }) {
   )
 }
 
-export function EntriesTab() {
+export function EntriesTab({ funnel }: FunnelTabProps) {
+  const funnelId = funnel?.id
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
   const [source, setSource] = useState<FunnelSource | ''>('')
@@ -40,9 +41,9 @@ export function EntriesTab() {
     const t = setTimeout(() => setDebounced(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  useEffect(() => setPage(1), [debounced, source, step])
+  useEffect(() => setPage(1), [debounced, source, step, funnelId])
 
-  const filters: FunnelEntryFilters = { source, step, search: debounced, page, page_size: PAGE_SIZE }
+  const filters: FunnelEntryFilters = { funnel_id: funnelId, source, step, search: debounced, page, page_size: PAGE_SIZE }
   const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['funnel', 'entries', filters],
     queryFn: () => funnelApi.entries(filters),
@@ -91,7 +92,7 @@ export function EntriesTab() {
                   <th className="px-4 py-3">Ism-familiya</th>
                   <th className="px-4 py-3">Telefon</th>
                   <th className="px-4 py-3">Sinf</th>
-                  <th className="px-4 py-3">Manba</th>
+                  <th className="px-4 py-3">{funnel ? 'Manba' : 'Manba / voronka'}</th>
                   <th className="px-4 py-3">Bosqich</th>
                   <th className="px-4 py-3">Suhbat</th>
                   <th className="hidden px-4 py-3 lg:table-cell" title="Yuborilgan sotuv xabarlari">Xabarlar</th>
@@ -106,7 +107,12 @@ export function EntriesTab() {
                       {e.phone ? <a href={`tel:${e.phone}`} className="hover:text-brand-700">{e.phone}</a> : <Dash />}
                     </td>
                     <td className="whitespace-nowrap px-4 py-3 text-gray-700">{gradeLabel(e.grade) ?? <Dash />}</td>
-                    <td className="whitespace-nowrap px-4 py-3"><SourceBadge source={e.source} /></td>
+                    <td className="whitespace-nowrap px-4 py-3">
+                      <div className="flex flex-col items-start gap-1">
+                        <SourceBadge source={e.source} />
+                        {!funnel && <FunnelBadge name={e.funnel_name} />}
+                      </div>
+                    </td>
                     <td className="whitespace-nowrap px-4 py-3">
                       <div className="flex flex-col items-start gap-1">
                         <StepBadge step={e.step} />

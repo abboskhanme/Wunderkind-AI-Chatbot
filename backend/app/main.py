@@ -22,11 +22,12 @@ from sqlalchemy import func, select
 
 from app import runtime_config
 from app.agent import knowledge
-from app.api import auth, bot_menu, dashboard, funnel, leads, playground, users
+from app.api import auth, bot_menu, dashboard, funnel, funnels, leads, playground, users
 from app.api import settings as settings_api
 from app.config import settings
 from app.core.security import hash_password
 from app.db import session as db_session
+from app.funnel import funnels as funnel_registry
 from app.funnel import gsheet as funnel_gsheet
 from app.funnel import reminders as funnel_reminders
 from app.funnel import sales as funnel_sales
@@ -136,6 +137,7 @@ async def _startup_tasks() -> None:
     try:
         await runtime_config.reload()
         await bootstrap_admin()
+        await funnel_registry.ensure_default()    # the migration creates it; safety net
     except Exception as exc:  # noqa: BLE001
         logger.error("Database not ready at startup: {}", exc)
     knowledge.get_knowledge()
@@ -187,7 +189,8 @@ if settings.CORS_ORIGINS:
     )
 
 api = APIRouter(prefix="/api")
-for module in (auth, users, settings_api, dashboard, leads, bot_menu, playground, funnel):
+for module in (auth, users, settings_api, dashboard, leads, bot_menu, playground, funnel,
+               funnels):
     api.include_router(module.router)
 app.include_router(api)
 app.include_router(ig_webhook_router)

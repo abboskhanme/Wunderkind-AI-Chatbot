@@ -479,3 +479,123 @@ API contract (10.4) unchanged. Behaviour and data model:
   stats ignore it. PATCH to `scheduled` → 400. Group keyword replies skip TELEGRAM_CHAT_ID
   chats. Missed 07:00 reminders are sent at startup until 12:00.
 - Migration `087311873265` (additive columns) follows `74ce2ab64d21`.
+
+## 11. Multiple funnels (added 2026-09-25)
+
+Client: "several funnels, each built separately" (Salebot-constructor-like later).
+Phase 1 (this section): N funnels sharing the SAME step template (§10.1).
+Phase 2 (later, separate spec): visual block constructor.
+
+Shared by all funnels (stay global settings): booking schedule
+(`FUNNEL_WORK_DAYS … FUNNEL_BOOK_DAYS_AHEAD`, `FUNNEL_HOLIDAYS`), staff/address/
+location, confirm + reminder texts and time, Telegram channel gate settings
+(`FUNNEL_TG_CHANNEL`, `FUNNEL_TG_REQUIRE_CHANNEL`, `FUNNEL_TG_DISCUSSION_CHAT_ID`),
+IG follow flags, Google Sheets, `FUNNEL_ENABLED` (master switch).
+
+Per funnel: name, active flag, keywords, optional Instagram post filter, lead
+magnet PDF, sales messages, and text overrides.
+
+### 11.1 Data model (one additive migration)
+`funnels` — id uuid, name str(120), slug str(32) unique (a-z0-9_, used in deep
+links), is_active bool, is_default bool (exactly one), keywords text (comma
+separated; empty on the default funnel = use `FUNNEL_KEYWORDS`),
+ig_media_ids text (comma separated Instagram media ids/permalinks shortcodes;
+empty = any post), texts jsonb (per-funnel overrides of the whitelisted text keys
+below; missing/empty key → global setting), sort_order, created_at, updated_at.
+Whitelisted per-funnel text keys: FUNNEL_IG_COMMENT_REPLY, FUNNEL_IG_DM_WELCOME,
+FUNNEL_IG_NOT_FOLLOWING, FUNNEL_IG_LINK_MESSAGE, FUNNEL_TG_COMMENT_REPLY,
+FUNNEL_BOT_WELCOME, FUNNEL_ASK_NAME, FUNNEL_ASK_PHONE, FUNNEL_ASK_GRADE,
+FUNNEL_GRADES, FUNNEL_PDF_CAPTION, FUNNEL_BOOK_BUTTON.
+
+Migration: create `funnels`, insert the default funnel ("Asosiy voronka", slug
+`asosiy`, is_default, empty overrides → behaves exactly like today); add
+`funnel_id` (FK funnels, NOT NULL after backfill to the default) to
+`funnel_entries` and `funnel_messages`; `funnel_files` gets `funnel_id`
+(backfill default; the lead magnet becomes one PDF per funnel).
+`funnel_entries.tg_user_id` uniqueness becomes (funnel_id, tg_user_id): one
+person may go through several funnels. Downgrade must work (drop added
+columns/table; before that delete non-default funnels' rows).
+
+### 11.2 Routing
+- Keyword match: iterate active funnels by sort_order; a funnel matches when a
+  keyword matches AND (ig_media_ids empty OR the comment's media id is listed).
+  Funnels with a media filter are checked before funnels without one. The default
+  funnel's empty keywords mean `FUNNEL_KEYWORDS`. Saving a funnel whose keyword
+  collides with another active funnel with the same media scope → 400
+  (Uzbek message).
+- Deep links: IG token links unchanged (token belongs to an entry → funnel).
+  Telegram channel link `?start=tgc` → default funnel; `?start=tgc_<slug>` →
+  that funnel; `?start=f_<slug>` → that funnel with source `telegram_direct`
+  (for ads/bio links). Bare `/start` → default funnel (if
+  FUNNEL_BOT_START_FUNNEL=ha).
+- Bot state: a Telegram user's *current* entry = the most recently touched entry
+  in a collection step; callbacks (`fb:*`) carry no funnel id — they act on the
+  entry of the active booking flow (latest pdf_sent entry). Bookings stay one
+  `scheduled` per person across funnels (a person books one interview, whichever
+  funnel sent the button): taking a new slot from another funnel reschedules.
+- Sales scheduler: per entry, its own funnel's messages. If the same person is
+  in two funnels, both sequences run but stop on booking (existing rule).
+- Inactive funnel: no new entries; in-flight entries finish.
+- Deleting a funnel: only if it has no entries (else 409 "arxivlang" → set
+  inactive); default funnel cannot be deleted or deactivated.
+
+### 11.3 API changes (all `/api/funnel`)
+- `GET /funnels` (A,O) → `FunnelOut[]` = `{id, name, slug, is_active, is_default,
+  keywords, ig_media_ids, texts, sort_order, links: {telegram_channel, telegram_direct},
+  stats: {entries, pdf_sent, booked}, has_pdf, created_at}`
+- `POST /funnels` (A) `{name, slug?, keywords, ig_media_ids?, is_active?, texts?}`
+  → FunnelOut (slug auto from name if absent; copy_from_id? optional: duplicates
+  texts, messages and PDF of another funnel)
+- `PATCH /funnels/{id}` (A), `DELETE /funnels/{id}` (A) 204/409,
+  `POST /funnels/reorder` (A) `{ids}`
+- Existing endpoints get an optional `funnel_id` query param (absent → all funnels
+  for stats/entries/bookings; → default funnel for messages / lead-magnet):
+  `GET /stats`, `GET /entries`, `GET /bookings`, `GET|POST /messages`,
+  `POST /messages/reorder`, `GET|PUT /lead-magnet`, `GET /lead-magnet/download`.
+  `FunnelEntryOut` and `BookingOut` gain `funnel_id, funnel_name`.
+  `FunnelMessageOut` gains `funnel_id`.
+- `GET /settings` unchanged; the per-funnel text keys stay in the global
+  catalog as defaults.
+
+- Backend clarifications (2026-09-25, no contract change): `POST /funnels` — `keywords`
+  may be "" on a non-default funnel (deep-link-only funnel); `ig_media_ids` accepts
+  media ids, post/reel links or shortcodes and is stored normalized ("id…, shortcode…").
+  `PATCH /funnels/{id}` `texts` is MERGED: a key with text sets it, ""/null removes it
+  (→ global), absent keys stay. `DELETE` of the default funnel → 400 (with entries → 409).
+  Unknown `funnel_id` on any endpoint → 404. `copy_from_id` copies texts (payload texts
+  win), sales messages with images and the PDF (keywords/post filter are not copied).
+  Routing without a post (Instagram DM, Telegram group comment): unfiltered funnels
+  first, then post-filtered ones by sort_order. Instagram DMs keep the strict rule
+  (§10.7: nearly bare keyword). After qa-review: bare `/start` resumes the person's own
+  latest entry (default funnel only for people with no entry); unknown `tgc_<slug>` →
+  default funnel as `telegram_channel`; with the master switch off / an archived funnel a
+  link only resumes unfinished questions; Sheet column O is written only if empty or
+  "Voronka" (otherwise A:N + staff alert).
+
+### 11.4 Google Sheets
+New column "Voronka" (funnel name) inserted before "ID"… to avoid shifting the
+existing layout it is APPENDED as column O after "ID"; header row updated on
+next sync.
+
+### 11.5 Admin panel
+Voronka page:
+- Top: funnel switcher (list/cards: name, active badge, keywords, entries/PDF/
+  booked counts) + "Yangi voronka" (A) with optional "copy from".
+- Selected funnel tabs: Statistika, Ro'yxat (scoped), Xabarlar (A), Sozlamalar
+  (A: name, slug, active, keywords, IG post filter, PDF, text overrides — each
+  override field shows the global default as placeholder with "umumiy matn"
+  hint; empty = use global; deep links with copy buttons).
+- "Hammasi" pseudo-funnel in the switcher for all-funnel Statistika/Ro'yxat.
+- Suhbatlar tab (bookings) stays global with a funnel filter + column.
+- Separate tab "Umumiy sozlamalar" (A): the shared settings (schedule, staff,
+  address, confirm/reminder, TG channel, IG follow flags, master switch,
+  Google Sheets + check/resync, test message). Remove from it the per-funnel
+  keys (they live in each funnel's overrides; the global value is the default).
+
+### 11.6 Tests
+Migration backfill (existing entries/messages/PDF land in the default funnel,
+behaviour unchanged — all existing funnel tests must pass untouched except for
+new fields); routing by keyword and media filter; keyword collision 400;
+`tgc_<slug>`/`f_<slug>` deep links; person in two funnels; per-funnel texts
+override + fallback; per-funnel PDF; delete/deactivate rules; RBAC on new
+endpoints.

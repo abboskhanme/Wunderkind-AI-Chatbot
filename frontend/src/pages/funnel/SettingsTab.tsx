@@ -1,19 +1,18 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import {
-  CheckCircle2, Download, FileSpreadsheet, FileText, RefreshCw, Save, Send, Settings2, Upload, XCircle,
-} from 'lucide-react'
+import { CheckCircle2, FileSpreadsheet, Info, RefreshCw, Save, Send, Settings2, XCircle } from 'lucide-react'
 import { settingsApi } from '@/api/settings'
-import { funnelApi, LEAD_MAGNET_DOWNLOAD_URL } from '@/api/funnel'
-import { downloadFile, errorMessage } from '@/api/client'
+import { funnelApi, FUNNEL_TEXT_KEYS } from '@/api/funnel'
+import { errorMessage } from '@/api/client'
 import type { SendResult, SettingGroup, SettingItem, SheetTestResult, TestMessageKind } from '@/api/types'
 import { Button, Card, CardHeader, Empty, Input, Label, Loading, Select } from '@/components/ui'
 import { SettingField, changedValues, initialDraft, mergeDraft, type Draft } from '@/components/SettingField'
-import { fmtBytes, fmtDateTime } from '@/lib/format'
-import { ErrorState } from './shared'
+import { ErrorState, type FunnelTabProps } from './shared'
+import { MESSAGES_KEY } from './MessagesTab'
 
-const MAX_PDF_BYTES = 20 * 1024 * 1024
+/** Keys edited per funnel (keywords + text overrides) — not shown among the shared settings. */
+const PER_FUNNEL_KEYS = new Set<string>(['FUNNEL_KEYWORDS', ...FUNNEL_TEXT_KEYS])
 
 // --- Settings groups (rendered with the shared SettingField) --------------------
 
@@ -24,16 +23,11 @@ interface Section {
 
 const inList = (keys: string[]) => (key: string) => keys.includes(key)
 
-/** Visual split of the long `funnel` group; unknown keys fall into "Boshqa". */
+/** Visual split of the shared `funnel` settings; unknown keys fall into "Boshqa". */
 const FUNNEL_SECTIONS: Section[] = [
-  { title: 'Umumiy', match: inList(['FUNNEL_ENABLED', 'FUNNEL_KEYWORDS']) },
+  { title: 'Umumiy', match: inList(['FUNNEL_ENABLED', 'FUNNEL_BOT_START_FUNNEL']) },
   { title: 'Instagram', match: (k) => k.startsWith('FUNNEL_IG_') },
   { title: 'Telegram kanal', match: (k) => k.startsWith('FUNNEL_TG_') },
-  {
-    title: "Bot suhbati va qo'llanma",
-    match: (k) => k.startsWith('FUNNEL_BOT_') || k.startsWith('FUNNEL_ASK_')
-      || inList(['FUNNEL_GRADES', 'FUNNEL_PDF_CAPTION', 'FUNNEL_BOOK_BUTTON'])(k),
-  },
   {
     title: 'Suhbat jadvali',
     match: inList([
@@ -190,89 +184,6 @@ function SheetExtras() {
   )
 }
 
-// --- Lead magnet PDF ----------------------------------------------------------------
-
-function LeadMagnetCard() {
-  const qc = useQueryClient()
-  const input = useRef<HTMLInputElement>(null)
-  const [downloading, setDownloading] = useState(false)
-  const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['funnel', 'lead-magnet'],
-    queryFn: funnelApi.leadMagnet,
-  })
-  const upload = useMutation({
-    mutationFn: (file: File) => funnelApi.uploadLeadMagnet(file),
-    onSuccess: () => {
-      toast.success("Qo'llanma yuklandi")
-      qc.invalidateQueries({ queryKey: ['funnel', 'lead-magnet'] })
-    },
-    onError: (e) => toast.error(errorMessage(e)),
-  })
-
-  function pick() {
-    if (data && !window.confirm("Yangi fayl hozirgisining o'rnini egallaydi. Davom etasizmi?")) return
-    input.current?.click()
-  }
-
-  async function download() {
-    if (!data) return
-    setDownloading(true)
-    try {
-      await downloadFile(LEAD_MAGNET_DOWNLOAD_URL, data.filename)
-    } catch {
-      toast.error("Yuklab bo'lmadi")
-    } finally {
-      setDownloading(false)
-    }
-  }
-
-  return (
-    <Card>
-      <CardHeader title="Qo'llanma (PDF)" subtitle="Ma'lumot to'ldirgan mijozga bot yuboradigan fayl" />
-      {isLoading && <Loading />}
-      {isError && <ErrorState error={error} onRetry={() => refetch()} />}
-      {!isLoading && !isError && data === null && (
-        <Empty
-          icon={<FileText className="h-6 w-6" />}
-          title="Qo'llanma yuklanmagan"
-          text="Yuklanmaguncha bot mijozga «tez orada yuboramiz» deydi va xodimlarga xabar beradi."
-          action={<Button icon={<Upload className="h-4 w-4" />} loading={upload.isPending} onClick={pick}>PDF yuklash</Button>}
-        />
-      )}
-      {data && (
-        <div className="space-y-4 px-5 py-4">
-          <div className="flex items-start gap-3">
-            <div className="rounded-lg bg-red-50 p-2 text-red-600"><FileText className="h-5 w-5" /></div>
-            <div className="min-w-0">
-              <p className="truncate text-sm font-medium text-gray-900" title={data.filename}>{data.filename}</p>
-              <p className="text-xs text-gray-500">{fmtBytes(data.size_bytes)} · {fmtDateTime(data.updated_at)}</p>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-2">
-            <Button variant="secondary" size="sm" icon={<Download className="h-3.5 w-3.5" />} loading={downloading} onClick={download}>Yuklab olish</Button>
-            <Button variant="secondary" size="sm" icon={<Upload className="h-3.5 w-3.5" />} loading={upload.isPending} onClick={pick}>Almashtirish</Button>
-          </div>
-        </div>
-      )}
-      <input
-        ref={input}
-        type="file"
-        accept="application/pdf,.pdf"
-        hidden
-        onChange={(e) => {
-          const file = e.target.files?.[0]
-          e.target.value = ''
-          if (!file) return
-          const isPdf = file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf')
-          if (!isPdf) toast.error('Faqat PDF fayl yuklash mumkin')
-          else if (file.size > MAX_PDF_BYTES) toast.error(`${file.name}: 20 MB dan katta`)
-          else upload.mutate(file)
-        }}
-      />
-    </Card>
-  )
-}
-
 // --- Test message -------------------------------------------------------------------
 
 const KIND_LABELS: Record<TestMessageKind, string> = {
@@ -281,16 +192,26 @@ const KIND_LABELS: Record<TestMessageKind, string> = {
   sales: 'Sotuv xabari',
 }
 
-function TestMessageCard() {
+function TestMessageCard({ funnels, initialFunnelId }: { funnels: FunnelTabProps['funnels']; initialFunnelId: string | undefined }) {
   const [chatId, setChatId] = useState('')
   const [kind, setKind] = useState<TestMessageKind>('confirm')
+  const [funnelId, setFunnelId] = useState(initialFunnelId ?? funnels.find((f) => f.is_default)?.id ?? '')
   const [messageId, setMessageId] = useState('')
   const [result, setResult] = useState<SendResult>()
-  const messages = useQuery({ queryKey: ['funnel', 'messages'], queryFn: funnelApi.messages })
+  const defaultId = funnels.find((f) => f.is_default)?.id
+  // Funnels may arrive after mount: fall back to the default funnel
+  useEffect(() => {
+    if (!funnelId && defaultId) setFunnelId(defaultId)
+  }, [funnelId, defaultId])
+  const messages = useQuery({
+    queryKey: [...MESSAGES_KEY, funnelId || 'default'],
+    queryFn: () => funnelApi.messages(funnelId || undefined),
+    enabled: kind === 'sales',
+  })
   const list = [...(messages.data ?? [])].sort((a, b) => a.sort_order - b.sort_order)
   const firstId = list[0]?.id
 
-  // Preselect the first sales message (or drop a selection whose message was deleted)
+  // Preselect the first sales message (or drop a selection that is not in this funnel)
   useEffect(() => {
     if (kind !== 'sales' || !messages.data) return
     if (!messageId || !messages.data.some((m) => m.id === messageId)) setMessageId(firstId ?? '')
@@ -329,6 +250,14 @@ function TestMessageCard() {
             {(Object.keys(KIND_LABELS) as TestMessageKind[]).map((k) => <option key={k} value={k}>{KIND_LABELS[k]}</option>)}
           </Select>
         </div>
+        {kind === 'sales' && funnels.length > 1 && (
+          <div>
+            <Label>Voronka</Label>
+            <Select value={funnelId} onChange={(e) => { setFunnelId(e.target.value); setMessageId('') }}>
+              {funnels.map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+            </Select>
+          </div>
+        )}
         {kind === 'sales' && (
           <div>
             <Label>Sotuv xabari</Label>
@@ -337,7 +266,7 @@ function TestMessageCard() {
             ) : messages.isError ? (
               <p className="text-xs text-red-600">Xabarlar ro'yxatini yuklab bo'lmadi</p>
             ) : list.length === 0 ? (
-              <p className="text-xs text-gray-500">Hali sotuv xabari yo'q — «Xabarlar» bo'limida qo'shing.</p>
+              <p className="text-xs text-gray-500">Bu voronkada hali sotuv xabari yo'q — «Xabarlar» bo'limida qo'shing.</p>
             ) : (
               <Select value={messageId} onChange={(e) => setMessageId(e.target.value)}>
                 {list.map((m, i) => (
@@ -363,7 +292,8 @@ function TestMessageCard() {
 
 // --- Tab ------------------------------------------------------------------------------
 
-export function SettingsTab() {
+/** "Umumiy sozlamalar": settings shared by every funnel (SPEC 11.5). */
+export function GlobalSettingsTab({ funnel, funnels }: FunnelTabProps) {
   const { data, isLoading, isError, error, refetch } = useQuery({ queryKey: ['settings'], queryFn: settingsApi.get })
   const dirtyGroups = useRef(new Set<string>())
   const onDirty = useCallback((id: string, dirty: boolean) => {
@@ -379,7 +309,12 @@ export function SettingsTab() {
     return () => window.removeEventListener('beforeunload', handler)
   }, [])
 
-  const funnel = data?.groups.find((g) => g.id === 'funnel')
+  const funnelGroup = data?.groups.find((g) => g.id === 'funnel')
+  // Memoized: GroupCard re-syncs its draft whenever `group.items` changes identity
+  const shared = useMemo(
+    () => (funnelGroup ? { ...funnelGroup, items: funnelGroup.items.filter((i) => !PER_FUNNEL_KEYS.has(i.key)) } : undefined),
+    [funnelGroup],
+  )
   const gsheet = data?.groups.find((g) => g.id === 'gsheet')
 
   return (
@@ -387,7 +322,7 @@ export function SettingsTab() {
       <div className="min-w-0 space-y-6">
         {isLoading && <Card><Loading /></Card>}
         {isError && <Card><ErrorState error={error} onRetry={() => refetch()} /></Card>}
-        {data && !funnel && !gsheet && (
+        {data && !shared && !gsheet && (
           <Card>
             <Empty
               icon={<Settings2 className="h-6 w-6" />}
@@ -396,12 +331,18 @@ export function SettingsTab() {
             />
           </Card>
         )}
-        {funnel && <GroupCard group={funnel} sections={FUNNEL_SECTIONS} onDirty={onDirty} />}
+        {shared && <GroupCard group={shared} sections={FUNNEL_SECTIONS} onDirty={onDirty} />}
         {gsheet && <GroupCard group={gsheet} extras={<SheetExtras />} onDirty={onDirty} />}
       </div>
       <div className="space-y-6 lg:sticky lg:top-6 lg:self-start">
-        <LeadMagnetCard />
-        <TestMessageCard />
+        <Card className="flex gap-3 p-4 text-sm text-gray-600">
+          <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+          <p>
+            Bu sozlamalar barcha voronkalar uchun umumiy. Kalit so'zlar, matnlar, qo'llanma (PDF) va
+            sotuv xabarlari har bir voronkaning o'z «Sozlamalar» va «Xabarlar» bo'limida.
+          </p>
+        </Card>
+        <TestMessageCard funnels={funnels} initialFunnelId={funnel?.id} />
       </div>
     </div>
   )
