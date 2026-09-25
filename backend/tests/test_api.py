@@ -194,7 +194,7 @@ def test_inbox_detail_read_and_status_change(client, admin, database):
     assert csv.status_code == 200 and "+998901112233" in csv.text
 
 
-def test_operator_reply_sends_pauses_and_logs(client, operator, database, monkeypatch):
+def test_operator_reply_sends_logs_and_keeps_ai_on(client, operator, database, monkeypatch):
     from app.config import settings
     from app.services import channels
     from app.state.store import store
@@ -212,12 +212,15 @@ def test_operator_reply_sends_pauses_and_logs(client, operator, database, monkey
     r = client.post(f"/api/leads/{lid}/reply", headers=operator, json={"text": "Men administrator"})
     assert r.status_code == 200 and r.json()["sent"] is True, r.text
     assert sent == [("cust1", "Men administrator", False)]
-    assert asyncio.run(store.is_paused("cust1")) is True
+    # AI keeps answering after an operator reply (no auto-pause)
+    assert asyncio.run(store.is_paused("cust1")) is False
     detail = client.get(f"/api/leads/{lid}", headers=operator).json()
     assert detail["status"] == "contacted"
     assert detail["messages"][-1]["role"] == "operator"
 
-    # AI toggle
+    # Manual AI toggle still works
+    assert client.post(f"/api/leads/{lid}/bot", headers=operator,
+                       json={"enabled": False}).json()["paused"] is True
     assert client.post(f"/api/leads/{lid}/bot", headers=operator,
                        json={"enabled": True}).json()["paused"] is False
     assert client.get(f"/api/leads/{lid}/bot", headers=operator).json()["paused"] is False

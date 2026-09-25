@@ -58,9 +58,9 @@ Mijoz tugmani bossa, AI'siz tayyor matn va rasmlar yuboriladi.
 
 ### Suhbatlar
 - Chapda barcha suhbatlar; o'qilmaganlar belgilanadi.
-- Suhbatni ochib o'zingiz javob yozishingiz mumkin. Siz yozgach **AI shu suhbatda
-  vaqtincha jim turadi** (standart 12 soat). «AI javob» tugmasi bilan qo'lda
-  yoqib/o'chirib qo'yish mumkin.
+- Suhbatni ochib o'zingiz javob yozishingiz mumkin. Siz yozsangiz ham **AI javob
+  berishda davom etadi**. AI'ni biror suhbatda to'xtatish kerak bo'lsa, «AI javob»
+  tugmasi bilan qo'lda o'chiring (qayta yoqmaguningizcha jim turadi).
 - Instagramda javob oynasi cheklangan: mijozning oxirgi xabaridan 24 soat erkin,
   7 kungacha faqat operator javobi, keyin yopiq — telefon orqali bog'laning.
 - O'ng tomonda lead kartasi: holat, ism, telefon, kurs, izoh.

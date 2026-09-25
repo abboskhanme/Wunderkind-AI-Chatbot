@@ -139,10 +139,13 @@ def test_pipeline_replies_via_telegram(monkeypatch):
     asyncio.run(check())
 
 
-def test_operator_message_pauses_bot_in_telegram(monkeypatch):
+def test_operator_message_is_logged_but_does_not_pause_bot(monkeypatch):
     from app.processing import pipeline
 
+    logged: list[dict] = []
+
     async def fake_log(**kwargs):
+        logged.append(kwargs)
         return True
 
     monkeypatch.setattr(pipeline.leads_client, "log_message", fake_log)
@@ -154,8 +157,9 @@ def test_operator_message_pauses_bot_in_telegram(monkeypatch):
     asyncio.run(pipeline.process_event(event))
 
     async def check():
-        assert await store.is_paused("tg:900900") is True
+        assert await store.is_paused("tg:900900") is False
     asyncio.run(check())
+    assert [(m["role"], m["text"]) for m in logged] == [("operator", "Men javob beraman")]
 
 
 # --------------------------------------------------------------------------- #

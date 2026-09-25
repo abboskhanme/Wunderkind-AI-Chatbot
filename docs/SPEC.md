@@ -64,8 +64,10 @@ Goal per conversation: **name + phone + course (+ age/level, preferred time/bran
   inside the channel's allowed window (IG 24h), only if no contact was
   collected yet, max once per lead per silence. Toggle `FOLLOWUP_ENABLED`.
 - First message to a new person carries the AI disclosure line.
-- Operator intervention (reply from panel, or typing in IG/TG app) pauses the bot
-  for `BOT_PAUSE_HOURS` in that conversation; panel has a per-chat AI toggle.
+- Operator intervention (reply from panel, or typing in IG/TG app) is logged but
+  does NOT pause the bot (changed 2026-09-25 at the client's request;
+  `BOT_PAUSE_HOURS` is hidden/unused). The panel's per-chat AI toggle still
+  silences a conversation until switched back on.
 
 ## 4. Data model
 

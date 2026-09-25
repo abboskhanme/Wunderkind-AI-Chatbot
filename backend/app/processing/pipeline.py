@@ -223,10 +223,9 @@ async def _handle_echo(event: IncomingEvent) -> None:
     try:
         if await store.was_sent_by_bot(event.store_key, event.text):
             return  # the bot's own reply coming back
+        # Logged only: the AI keeps answering even after an operator writes
+        # (client's choice 2026-09-25). The panel's per-chat AI toggle still works.
         await _log(event, event.text, role="operator")
-        await store.pause(event.store_key, settings.BOT_PAUSE_HOURS)
-        logger.info("Operator replied manually — bot paused {}h: {}",
-                    settings.BOT_PAUSE_HOURS, event.sender_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Echo handling failed: {}", exc)
 

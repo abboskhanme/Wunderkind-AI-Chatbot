@@ -66,3 +66,4 @@
 - [2026-09-25] Funnel qa-review: PATCH booking status → `scheduled` from another status is refused (400) → capacity and the one-active-booking rule live in the bot; the person books again there.
 - [2026-09-25] Funnel qa-review: reminder catch-up at startup only between FUNNEL_REMINDER_TIME and 12:00 local → a missed 07:00 reminder is still useful at 09:30, not at 15:00.
 - [2026-09-25] Funnel qa-review: group keyword replies skip chats listed in TELEGRAM_CHAT_ID → staff typing "wunderkind" in the alert group must not get a customer reply.
+- [2026-09-25] Operator writes in a chat → AI keeps answering (no auto-pause); manual per-chat AI toggle kept → client: operators almost never write, the bot must always answer.

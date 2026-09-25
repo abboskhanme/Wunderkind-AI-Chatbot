@@ -58,8 +58,8 @@ async def send_reply(lead: Lead, text: str) -> dict:
         await store.mark_sent(key, text)
         result = await instagram.send_dm_result(
             lead.external_id, text, human_agent=win == "human_agent")
-    if result.get("sent"):
-        await store.pause(key, settings.BOT_PAUSE_HOURS)
+    # No auto-pause after an operator reply: the AI keeps answering
+    # (client's choice 2026-09-25). Use the per-chat AI toggle to silence it.
     return result
 
 
