@@ -68,3 +68,4 @@
 - [2026-09-25] Funnel qa-review: group keyword replies skip chats listed in TELEGRAM_CHAT_ID → staff typing "wunderkind" in the alert group must not get a customer reply.
 - [2026-09-25] Operator writes in a chat → AI keeps answering (no auto-pause); manual per-chat AI toggle kept → client: operators almost never write, the bot must always answer.
 - [2026-09-25] Client: the system is for a private SCHOOL, not a learning center → all user-facing wording, AI prompt, KB sections, lead labels (trial → "Suhbatga yozildi", enrolled → "Qabul qilindi", course_interest → "Qiziqish") rewritten; internal identifiers (course_interest, trial, KB_COURSES) kept to avoid DB/API churn; learning-center demo seed script removed (it was never run on the server).
+- [2026-09-25] Gemini model overloaded (503) or slow → one retry on gemini-3.6-flash, 25 s per attempt → prod used gemini-3.5-flash-lite which returned 503 'high demand' and made replies take 30–110 s.

@@ -10,11 +10,22 @@ uning budjeti javob limitiga qo'shiladi. Gemini 3 modellari budjet o'rniga
 """
 from __future__ import annotations
 
+import asyncio
+
 from google import genai
-from google.genai import types
+from google.genai import errors, types
+from loguru import logger
 
 from app.ai.base import AIProvider, T
 from app.config import settings
+
+# When the chosen model is overloaded (503/429/5xx) or too slow, the reply is
+# retried once on this model instead of making the customer wait a minute.
+FALLBACK_MODEL = "gemini-3.6-flash"
+# Per-attempt limit: a normal reply takes 2-5 s; anything near this is a stuck call
+ATTEMPT_TIMEOUT = 25.0
+_RETRYABLE = {429, 500, 502, 503, 504}
+
 
 # AI_EFFORT -> thinking budget (tokens) for Gemini 2.5 models
 _BUDGET = {"low": 512, "medium": 2048, "high": 8192}
@@ -50,19 +61,21 @@ class GeminiProvider(AIProvider):
             )
             for m in messages
         ]
-        model = settings.GEMINI_MODEL
-        thinking, reserve = _thinking(model, settings.AI_EFFORT)
-        response = await self._client.aio.models.generate_content(
-            model=model,
-            contents=contents,
-            config=types.GenerateContentConfig(
-                system_instruction=system,
-                max_output_tokens=settings.AI_MAX_TOKENS + reserve,
-                response_mime_type="application/json",
-                response_schema=output_model,
-                thinking_config=thinking,
-            ),
-        )
+        primary = settings.GEMINI_MODEL
+        models = [primary] + ([FALLBACK_MODEL] if primary != FALLBACK_MODEL else [])
+        response = None
+        for index, model in enumerate(models):
+            last = index == len(models) - 1
+            try:
+                response = await self._call(model, system, contents, output_model)
+                break
+            except (asyncio.TimeoutError, errors.APIError) as exc:
+                code = getattr(exc, "code", None)
+                retryable = isinstance(exc, asyncio.TimeoutError) or code in _RETRYABLE
+                if last or not retryable:
+                    raise
+                logger.warning("Gemini {} unavailable ({}) — retrying on {}",
+                               model, code or "timeout", models[index + 1])
         parsed = getattr(response, "parsed", None)
         if isinstance(parsed, output_model):
             return parsed
@@ -74,3 +87,20 @@ class GeminiProvider(AIProvider):
             raise RuntimeError(f"Gemini bo'sh javob qaytardi (finish_reason={reason})")
         # Fallback: xom JSON matnini validatsiya qilamiz
         return output_model.model_validate_json(text)
+
+    async def _call(self, model: str, system: str, contents: list, output_model: type[T]):
+        thinking, reserve = _thinking(model, settings.AI_EFFORT)
+        return await asyncio.wait_for(
+            self._client.aio.models.generate_content(
+                model=model,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    max_output_tokens=settings.AI_MAX_TOKENS + reserve,
+                    response_mime_type="application/json",
+                    response_schema=output_model,
+                    thinking_config=thinking,
+                ),
+            ),
+            timeout=ATTEMPT_TIMEOUT,
+        )
