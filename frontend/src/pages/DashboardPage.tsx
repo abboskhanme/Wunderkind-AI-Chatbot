@@ -66,7 +66,7 @@ export default function DashboardPage() {
             <Kpi label="Kiruvchi xabarlar" value={data.totals.messages_in} />
             <Kpi label="AI javoblari" value={data.totals.ai_replies} />
             <Kpi label="Qaynoq leadlar" value={data.totals.hot} />
-            <Kpi label="Sinov darsiga" value={data.totals.trial} />
+            <Kpi label="Suhbatga yozilgan" value={data.totals.trial} />
             <Kpi label="O'qishga yozildi" value={data.totals.enrolled} accent />
           </div>
 
@@ -149,7 +149,7 @@ export default function DashboardPage() {
               </div>
             </Card>
             <Card>
-              <CardHeader title="Ommabop kurslar" subtitle="Mijozlar qiziqqan kurslar" />
+              <CardHeader title="Ommabop qiziqishlar" subtitle="Ota-onalar nimaga qiziqmoqda" />
               <div className="px-5 py-3">
                 {data.top_courses.length === 0 ? (
                   <p className="py-2 text-sm text-gray-500">Hali ma'lumot yo'q</p>

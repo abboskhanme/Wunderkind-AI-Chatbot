@@ -133,7 +133,7 @@ export default function LeadsPage() {
         <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
           <div className="relative lg:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ism, telefon, @username, kurs..." className="pl-9" />
+            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ism, telefon, @username, qiziqish..." className="pl-9" />
           </div>
           <Select value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">Barcha holatlar</option>
@@ -170,7 +170,7 @@ export default function LeadsPage() {
                 <tr>
                   <th className="px-4 py-3">Mijoz</th>
                   <th className="px-4 py-3">Telefon</th>
-                  <th className="px-4 py-3">Kurs</th>
+                  <th className="px-4 py-3">Qiziqish</th>
                   <th className="px-4 py-3">Holat</th>
                   <th className="px-4 py-3">Ball</th>
                   <th className="hidden px-4 py-3 lg:table-cell">Mas'ul</th>

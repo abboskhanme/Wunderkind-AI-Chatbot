@@ -11,11 +11,11 @@ import { STAGE_LABELS } from '@/lib/labels'
 import { cn } from '@/lib/cn'
 
 const SAMPLES = [
-  'Assalomu alaykum, ingliz tili kurslari bormi?',
+  'Assalomu alaykum, 1-sinfga qabul bormi?',
   'Narxi qancha?',
   "Qimmat ekan, chegirma yo'qmi?",
   "Бола 10 ёшда, математикага бермоқчиман",
-  'Сколько стоит подготовка к IELTS?',
+  'Сколько стоит обучение в 5 классе?',
 ]
 
 interface Turn extends ChatTurn {

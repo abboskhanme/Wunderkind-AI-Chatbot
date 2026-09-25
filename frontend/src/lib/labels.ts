@@ -5,8 +5,8 @@ import type {
 export const STATUS_LABELS: Record<LeadStatus, string> = {
   new: 'Yangi',
   contacted: "Bog'lanildi",
-  trial: 'Sinov darsi',
-  enrolled: "O'qishga yozildi",
+  trial: 'Suhbatga yozildi',
+  enrolled: "Qabul qilindi",
   lost: "Yo'qotildi",
 }
 

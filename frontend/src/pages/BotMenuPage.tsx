@@ -48,7 +48,7 @@ function ItemModal({ item, open, onClose }: { item: MenuItem | null; open: boole
         <div className="grid gap-4 sm:grid-cols-2">
           <div>
             <Label>Tugma matni</Label>
-            <Input value={form.title} maxLength={64} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="💰 Kurslar narxi" />
+            <Input value={form.title} maxLength={64} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="💰 To'lov" />
           </div>
           <div>
             <Label hint="a-z, 0-9, _">Buyruq</Label>
@@ -61,7 +61,7 @@ function ItemModal({ item, open, onClose }: { item: MenuItem | null; open: boole
         </div>
         <div>
           <Label hint={`${form.text.length} / 4096`}>Javob matni</Label>
-          <Textarea rows={8} maxLength={4096} value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder="Kurslarimiz narxi:&#10;• Ingliz tili — ... so'm/oy&#10;• Matematika — ... so'm/oy" />
+          <Textarea rows={8} maxLength={4096} value={form.text} onChange={(e) => setForm({ ...form, text: e.target.value })} placeholder="Oylik to'lov:&#10;• Tayyorlov sinfi — ... so'm/oy&#10;• 1–4-sinflar — ... so'm/oy" />
           <p className="mt-1 text-xs text-gray-500">Mijoz bu tugmani bossa, bot AI'siz shu matnni (va rasmlarni) darhol yuboradi.</p>
         </div>
         <label className="flex items-center gap-3">
@@ -184,7 +184,7 @@ export default function BotMenuPage() {
               action={<Button size="sm" icon={<Save className="h-3.5 w-3.5" />} disabled={greeting === data.greeting} loading={saveGreeting.isPending} onClick={() => saveGreeting.mutate()}>Saqlash</Button>}
             />
             <div className="p-5">
-              <Textarea rows={4} value={greeting} onChange={(e) => setGreeting(e.target.value)} placeholder="Assalomu alaykum! 👋 Wunderkind o'quv markaziga xush kelibsiz. Quyidagi bo'limlardan birini tanlang yoki savolingizni yozing." />
+              <Textarea rows={4} value={greeting} onChange={(e) => setGreeting(e.target.value)} placeholder="Assalomu alaykum! 👋 Wunderkind maktabiga xush kelibsiz. Quyidagi bo'limlardan birini tanlang yoki savolingizni yozing." />
             </div>
           </Card>
 
@@ -194,7 +194,7 @@ export default function BotMenuPage() {
               <Empty
                 icon={<Bot className="h-6 w-6" />}
                 title="Hali bo'lim yo'q"
-                text="Masalan: «📚 Kurslar», «💰 Narxlar», «📍 Manzil», «🎁 Bepul sinov darsi»."
+                text="Masalan: «🏫 Maktab haqida», «💰 To'lov», «📍 Manzil», «📝 Qabul tartibi»."
                 action={<Button icon={<Plus className="h-4 w-4" />} onClick={() => { setEditing(null); setModalOpen(true) }}>Bo'lim qo'shish</Button>}
               />
             ) : (

@@ -33,9 +33,9 @@ def _load_from_disk() -> str:
 def _from_settings() -> str:
     """Knowledge text from the panel's "Bilim bazasi" settings ("" if empty)."""
     sections = [
-        ("O'quv markazi haqida", settings.KB_COMPANY),
-        ("Kurslar va narxlar", settings.KB_COURSES),
-        ("Guruhlar, jadval va sinov darsi", settings.KB_SCHEDULE),
+        ("Maktab haqida", settings.KB_COMPANY),
+        ("Sinflar, ta'lim dasturi va to'lov", settings.KB_COURSES),
+        ("Qabul tartibi va kun tartibi", settings.KB_SCHEDULE),
         ("Aksiyalar va chegirmalar", settings.KB_PROMO),
         ("Ko'p so'raladigan savol-javoblar", settings.KB_FAQ),
         ("Muloqot qoidalari", settings.KB_RULES),

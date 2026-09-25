@@ -1,6 +1,6 @@
 # Wunderkind AI Agent — SPEC
 
-AI sales agent for the Wunderkind learning center. It answers Instagram
+AI sales agent for the Wunderkind private school (changed from "learning center" 2026-09-25). It answers Instagram
 comments/DMs and Telegram chats, drives every conversation toward a sale
 (free trial lesson / placement test booking → enrollment), stores every
 conversation and lead, and is managed from one admin panel.

@@ -12,8 +12,8 @@ from app.ai.base import AIProvider, T
 from app.models_ai import AgentOutput, LeadInfo
 
 _PRICE = ("qancha", "narx", "turadi", "narxi", "pochom", "цена", "нарх", "нарҳ")
-_BUY = ("yozilaman", "yozil", "kerak", "sinov", "boraman", "хочу", "керак", "запис")
-_PRODUCTS = ("ielts", "ingliz tili", "matematika", "rus tili", "it")
+_BUY = ("yozilaman", "yozil", "kerak", "suhbat", "boraman", "хочу", "керак", "запис")
+_PRODUCTS = ("tayyorlov", "1-sinf", "2-sinf", "3-sinf", "4-sinf", "5-sinf")
 
 
 def _guess_product(low: str) -> str | None:
@@ -40,7 +40,7 @@ class MockProvider(AIProvider):
 
         reply = "Assalomu alaykum! 💛 Qiziqishingiz uchun rahmat. "
         if price or buying:
-            reply += ("Bepul sinov darsiga yozib qo'yaman — ismingiz va telefon "
+            reply += ("Maktabimizga tanishuv suhbatiga yozib qo'yaman — ismingiz va telefon "
                       "raqamingizni qoldiring, administratorimiz bog'lanadi 👌")
         else:
             reply += "Savolingiz bo'lsa, bemalol yozing, yordam beraman 🙌"

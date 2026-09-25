@@ -116,7 +116,7 @@ async def export_csv(
     )).scalars().all()
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["Sana", "Kanal", "Username", "Ism", "Telefon", "Kurs", "Yosh/daraja",
+    writer.writerow(["Sana", "Kanal", "Username", "Ism", "Telefon", "Qiziqish", "Yosh/sinf",
                      "Qulay vaqt", "Holat", "Ball", "Xulosa", "Izoh"])
     for l in leads:
         writer.writerow([

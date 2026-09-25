@@ -14,8 +14,8 @@ CHANNELS = ("instagram", "telegram")
 LEAD_STATUSES = ("new", "contacted", "trial", "enrolled", "lost")
 CLOSED_STATUSES = ("enrolled", "lost")
 STAGES = ("greeting", "discovery", "offer", "objection", "closing", "booked", "support")
-STATUS_LABELS = {"new": "Yangi", "contacted": "Bog'lanildi", "trial": "Sinov darsi",
-                 "enrolled": "O'qishga yozildi", "lost": "Yo'qotildi"}
+STATUS_LABELS = {"new": "Yangi", "contacted": "Bog'lanildi", "trial": "Suhbatga yozildi",
+                 "enrolled": "Qabul qilindi", "lost": "Yo'qotildi"}
 
 
 class Lead(UUIDPrimaryKeyMixin, TimestampMixin, Base):

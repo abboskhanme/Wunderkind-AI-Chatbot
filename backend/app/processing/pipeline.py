@@ -239,7 +239,7 @@ async def _deliver(event: IncomingEvent, out: AgentOutput, *, is_first: bool = F
         if out.move_to_dm:
             text = with_disclosure(
                 "Assalomu alaykum! Batafsil ma'lumotni shu yerda yozib beraman 👇 "
-                "Qaysi kurs va kim uchun (farzandingizmi yoki o'zingiz) qiziqyapsiz?"
+                "Farzandingiz nechanchi sinfga o'qishga kiradi?"
             )
             await store.mark_sent(event.sender_id, text)
             await instagram.send_private_reply(event.comment_id, text)
@@ -323,8 +323,8 @@ async def _alert_throttled(media: str, count: int) -> None:
 
 def with_disclosure(text: str) -> str:
     """First message of a conversation says it is an AI assistant (Meta guideline)."""
-    return (f"{text}\n\n🤖 Men {settings.COMPANY_NAME} o'quv markazining AI yordamchisiman. "
-            "Administrator kerak bo'lsa yozing — ulab qo'yaman.")
+    return (f"{text}\n\n🤖 Men {settings.COMPANY_NAME} maktabining AI yordamchisiman. "
+            "Qabul bo'limi xodimi kerak bo'lsa yozing — ulab qo'yaman.")
 
 
 # Backwards-compatible name used by the ported Telegram menu module

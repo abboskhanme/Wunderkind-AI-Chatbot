@@ -37,8 +37,8 @@ function toForm(l: LeadDetail): Form {
 const TEXT_FIELDS: { key: keyof Form; label: string; placeholder?: string }[] = [
   { key: 'name', label: 'Ismi' },
   { key: 'contact', label: 'Telefon / kontakt', placeholder: '+998 90 123 45 67' },
-  { key: 'course_interest', label: 'Qiziqqan kurs' },
-  { key: 'student_age', label: "O'quvchi yoshi / darajasi" },
+  { key: 'course_interest', label: 'Qiziqishi' },
+  { key: 'student_age', label: "Farzand yoshi / sinfi" },
   { key: 'preferred_time', label: 'Qulay vaqt / filial' },
 ]
 

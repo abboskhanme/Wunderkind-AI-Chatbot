@@ -34,8 +34,8 @@ _BATCH = 20
 def _task(hours: float) -> str:
     return (
         f"Mijoz taxminan {int(hours)} soatdan beri javob bermadi. Suhbat davomida "
-        "BITTA qisqa, iliq eslatma yoz: oxirgi savolingni yoki bepul sinov darsi "
-        "taklifini eslat va javob berish oson bo'lgan savol bilan tugat."
+        "BITTA qisqa, iliq eslatma yoz: oxirgi savolingni yoki maktabga "
+        "suhbatga kelish taklifini eslat va javob berish oson bo'lgan savol bilan tugat."
     )
 
 

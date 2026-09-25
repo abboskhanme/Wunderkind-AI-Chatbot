@@ -1,8 +1,8 @@
 # Wunderkind AI Agent — foydalanuvchi qo'llanmasi
 
-AI agent Instagram (izoh va shaxsiy xabar) hamda Telegramda mijozlarga o'zi javob
-beradi, ularni **bepul sinov darsiga** yozishga olib boradi va ism + telefon
-raqamini yig'adi. Hamma yozishma admin panelda saqlanadi.
+AI agent Instagram (izoh va shaxsiy xabar) hamda Telegramda ota-onalarga o'zi
+javob beradi, ularni **maktabga qabul suhbatiga** yozishga olib boradi va ism +
+telefon raqamini yig'adi. Hamma yozishma admin panelda saqlanadi.
 
 ## 1. Kirish
 Admin panel manzilini oching, login va parolni kiriting.
@@ -17,9 +17,9 @@ Admin panel manzilini oching, login va parolni kiriting.
 
 ### 2.2. Bilim bazasi — eng muhim qism
 **Bilim bazasi** bo'limida quyidagilarni to'liq yozing:
-- O'quv markazi haqida (filiallar, manzil, ish vaqti, telefon)
-- Kurslar va narxlar (yosh/daraja, dars soni, oylik narx)
-- Guruhlar, jadval va sinov darsi
+- Maktab haqida (manzil, ish vaqti, telefon, raqamlar bilan afzalliklar)
+- Sinflar, ta'lim dasturi va to'lov (oylik to'lov va unga nimalar kiradi)
+- Qabul tartibi va kun tartibi
 - Aksiyalar (faqat haqiqiylari)
 - Ko'p so'raladigan savollar («S:» savol, «J:» javob)
 
@@ -51,7 +51,7 @@ qoidalari»ga qo'shimcha yozing.
    Suhbatlar bo'limiga tushadi (ularga AI javob yozmaydi).
 
 ### 2.6. Bot menyusi (Telegram)
-**Bot menyusi** bo'limida tugmalar qo'shing (masalan «📚 Kurslar», «📍 Manzil»).
+**Bot menyusi** bo'limida tugmalar qo'shing (masalan «🏫 Maktab haqida», «📍 Manzil»).
 Mijoz tugmani bossa, AI'siz tayyor matn va rasmlar yuboriladi.
 
 ## 3. Kundalik ish
@@ -63,10 +63,10 @@ Mijoz tugmani bossa, AI'siz tayyor matn va rasmlar yuboriladi.
   tugmasi bilan qo'lda o'chiring (qayta yoqmaguningizcha jim turadi).
 - Instagramda javob oynasi cheklangan: mijozning oxirgi xabaridan 24 soat erkin,
   7 kungacha faqat operator javobi, keyin yopiq — telefon orqali bog'laning.
-- O'ng tomonda lead kartasi: holat, ism, telefon, kurs, izoh.
+- O'ng tomonda lead kartasi: holat, ism, telefon, qiziqish, izoh.
 
 ### Leadlar
-Holatlar: **Yangi → Bog'lanildi → Sinov darsi → O'qishga yozildi / Yo'qotildi.**
+Holatlar: **Yangi → Bog'lanildi → Suhbatga yozildi → Qabul qilindi / Yo'qotildi.**
 Telefon qoldirganlarga qo'ng'iroq qiling va holatni yangilang. CSV eksport bor.
 
 ### Telegram bildirishnomalari

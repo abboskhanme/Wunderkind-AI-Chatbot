@@ -59,44 +59,46 @@ CATALOG: tuple[SettingItem, ...] = (
 
     # --- Knowledge base -------------------------------------------------------
     SettingItem(
-        "KB_COMPANY", "O'quv markazi haqida", "knowledge", type="textarea",
+        "KB_COMPANY", "Maktab haqida", "knowledge", type="textarea",
         placeholder=(
-            "Wunderkind — bolalar va kattalar uchun o'quv markazi. 2015-yildan beri.\n"
-            "Filiallar: Chilonzor (Bunyodkor 12), Yunusobod (...).\n"
-            "Ish vaqti: Du–Sha 9:00–20:00.\nTelefon: +998 ...\nTelegram: @..."
+            "Wunderkind — xususiy maktab (1–11-sinflar), 20..-yildan beri.\n"
+            "Manzil: ... (mo'ljal: ...).\n"
+            "Ish vaqti: Du–Sha 8:00–18:00.\nTelefon: +998 ...\nTelegram: @..."
         ),
-        help="Kimsiz, filiallar va manzillar (mo'ljal bilan), ish vaqti, aloqa, afzalliklaringiz.",
+        help="Maktab haqida: litsenziya, manzil (mo'ljal bilan), ish vaqti, aloqa, "
+             "raqamlar va dalillar bilan afzalliklaringiz.",
     ),
     SettingItem(
-        "KB_COURSES", "Kurslar va narxlar", "knowledge", type="textarea",
+        "KB_COURSES", "Sinflar, ta'lim dasturi va to'lov", "knowledge", type="textarea",
         placeholder=(
-            "- Ingliz tili (7–12 yosh): haftada 3 dars × 90 daqiqa, oyiga 450 000 so'm\n"
-            "- IELTS (16+): ... \n- Matematika (Prezident maktabiga tayyorlov): ..."
+            "- Tayyorlov (0-sinf, 6 yosh): ... so'm/oy\n"
+            "- 1–4-sinflar: ingliz tili har kuni, sinfda ... o'quvchi, ... so'm/oy\n"
+            "- 5–11-sinflar: ... \n- To'lovga kiradi: ovqat (... mahal), to'garaklar, ..."
         ),
-        help="Har bir kurs: nomi, yosh/daraja, dars soni va davomiyligi, oylik narx, "
-             "natija (nima o'rganadi). Agent faqat shu narxlarni aytadi.",
+        help="Har bir sinf/bosqich: dastur, qo'shimcha fanlar, sinfdagi o'quvchilar soni, "
+             "oylik to'lov va unga nimalar kirishi. Agent faqat shu narxlarni aytadi.",
     ),
     SettingItem(
-        "KB_SCHEDULE", "Guruhlar, jadval va sinov darsi", "knowledge", type="textarea",
+        "KB_SCHEDULE", "Qabul tartibi va kun tartibi", "knowledge", type="textarea",
         placeholder=(
-            "Sinov darsi: BEPUL, 60 daqiqa, oldindan yozilish kerak.\n"
-            "Daraja testi: bepul, 30 daqiqa.\n"
-            "Guruhlar: ertalab 9:00, tushdan keyin 14:00, 16:00, kechqurun 18:30.\n"
-            "Guruhda 8–12 o'quvchi."
+            "Qabul: davom etmoqda, 20..–20.. o'quv yili uchun.\n"
+            "Qabul suhbati: bepul, Du–Sha 9:00–16:00, oldindan yozilish kerak.\n"
+            "Kerakli hujjatlar: ...\n"
+            "Kun tartibi: 8:30–17:00, ... mahal ovqat, uyga vazifa maktabda bajariladi."
         ),
-        help="Sinov darsi/daraja testi qanday o'tadi, guruh vaqtlari, guruh hajmi, "
-             "yangi guruhlar qachon ochiladi.",
+        help="Qabul qanday o'tadi (suhbat, test), hujjatlar, kun tartibi, transport, "
+             "to'garaklar.",
     ),
     SettingItem(
         "KB_PROMO", "Aksiyalar va chegirmalar", "knowledge", type="textarea",
-        placeholder="- Aka-uka/opa-singil uchun 10% chegirma\n- 3 oyga oldindan to'lovda 1 hafta bepul",
+        placeholder="- Aka-uka/opa-singil uchun ...% chegirma\n- Yillik to'lovda ...% chegirma",
         help="Faqat HAQIQIY amaldagi aksiyalar. Bo'lmasa bo'sh qoldiring — agent o'ylab topmaydi.",
     ),
     SettingItem(
         "KB_FAQ", "Ko'p so'raladigan savollar", "knowledge", type="textarea",
         placeholder=(
-            "S: O'qituvchilar kimlar?\nJ: CELTA/IELTS 8+ sertifikatli ustozlar.\n\n"
-            "S: Sertifikat beriladimi?\nJ: Ha, har bir daraja yakunida."
+            "S: O'qituvchilar kimlar?\nJ: ...\n\n"
+            "S: Davlat attestati beriladimi?\nJ: Ha, maktab litsenziyaga ega."
         ),
         help="«S:» savol, «J:» javob. Qancha ko'p bo'lsa, agent shuncha kam operatorga o'tkazadi.",
     ),
@@ -165,7 +167,7 @@ CATALOG: tuple[SettingItem, ...] = (
                 type="number", placeholder="100"),
 
     # --- General --------------------------------------------------------------
-    SettingItem("COMPANY_NAME", "O'quv markazi nomi", "general", placeholder="Wunderkind"),
+    SettingItem("COMPANY_NAME", "Maktab nomi", "general", placeholder="Wunderkind"),
     SettingItem("TIMEZONE", "Vaqt mintaqasi", "general", placeholder="Asia/Tashkent"),
 
     # --- Lead-magnet funnel (SPEC §10) ------------------------------------------

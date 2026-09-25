@@ -1,7 +1,7 @@
 # Wunderkind AI Agent
 
-AI sales agent for the Wunderkind learning center. Answers Instagram comments/DMs
-and Telegram chats, drives each conversation to a free trial lesson booking
+AI sales agent for the Wunderkind private school. Answers Instagram comments/DMs
+and Telegram chats, drives each conversation to an admission interview booking
 (name + phone), logs everything, and alerts staff in Telegram. Managed from one
 admin panel. Ported from `NUR-Project/agent`; see `docs/SPEC.md`.
 

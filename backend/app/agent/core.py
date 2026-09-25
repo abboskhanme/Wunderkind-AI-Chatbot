@@ -87,9 +87,9 @@ _CHANNEL_LABELS = {
 _FACT_LABELS = {
     "name": "Ismi",
     "contact": "Telefon/kontakt",
-    "course_interest": "Qiziqqan kurs",
-    "student_age": "O'quvchi yoshi/darajasi",
-    "preferred_time": "Qulay vaqt/filial",
+    "course_interest": "Qiziqishi",
+    "student_age": "Farzand yoshi/sinfi",
+    "preferred_time": "Qulay vaqt",
     "summary": "Oldingi suhbat xulosasi",
 }
 

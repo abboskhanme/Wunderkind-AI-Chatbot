@@ -82,8 +82,8 @@ async def notify_hot_lead(username: str | None, out: AgentOutput, *,
     fields = (
         ("Ism", out.lead.name or known.get("name")),
         ("Telefon", out.lead.contact or known.get("contact")),
-        ("Kurs", out.lead.course_interest or known.get("course_interest")),
-        ("Yosh/daraja", out.lead.student_age or known.get("student_age")),
+        ("Qiziqish", out.lead.course_interest or known.get("course_interest")),
+        ("Yosh/sinf", out.lead.student_age or known.get("student_age")),
         ("Qulay vaqt", out.lead.preferred_time or known.get("preferred_time")),
         ("Xulosa", out.lead.summary),
     )
@@ -100,7 +100,7 @@ async def notify_ingest_failed(payload: LeadPayload) -> None:
         "❌ <b>Leadni bazaga yozib bo'lmadi</b> (qo'lda kiriting)\n"
         f"Kimdan: {_esc(payload.username or payload.user_id)}\n"
         f"Telefon: {_esc(payload.contact or '-')}\n"
-        f"Kurs: {_esc(payload.course_interest or '-')}"
+        f"Qiziqish: {_esc(payload.course_interest or '-')}"
     )
 
 

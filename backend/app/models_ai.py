@@ -20,13 +20,13 @@ class LeadInfo(BaseModel):
         default=None, description="Telefon raqami, mijoz bergan bo'lsa"
     )
     course_interest: Optional[str] = Field(
-        default=None, description="Qiziqqan kurs (masalan: Ingliz tili, IELTS, Matematika)"
+        default=None, description="Qiziqish (masalan: 1-sinfga qabul, tayyorlov sinfi, 5-sinf)"
     )
     student_age: Optional[str] = Field(
-        default=None, description="O'quvchi yoshi yoki sinfi/darajasi, aytilgan bo'lsa"
+        default=None, description="Farzand yoshi yoki sinfi, aytilgan bo'lsa"
     )
     preferred_time: Optional[str] = Field(
-        default=None, description="Qulay vaqt/filial, aytilgan bo'lsa"
+        default=None, description="Qulay vaqt, aytilgan bo'lsa"
     )
     summary: Optional[str] = Field(
         default=None, description="Suhbat qisqacha xulosasi (o'zbekcha, 1-2 gap)"
@@ -50,7 +50,7 @@ class AgentOutput(BaseModel):
     )
     lead_score: int = Field(description="Lead qiymati 0..100 (100 = yozilishga tayyor)")
     is_hot_lead: bool = Field(
-        description="Jiddiy xaridor belgilari bormi (raqam qoldirdi, sinov darsiga yozilmoqchi)"
+        description="Jiddiy xaridor belgilari bormi (raqam qoldirdi, maktabga suhbatga yozilmoqchi)"
     )
     move_to_dm: bool = Field(
         description="Ochiq izohdan shaxsiy xabarga o'tkazish kerakmi"

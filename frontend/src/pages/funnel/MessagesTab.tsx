@@ -91,7 +91,7 @@ function MessageModal({ message, open, onClose }: { message: FunnelMessageOut | 
             maxLength={4096}
             value={form.text}
             onChange={(e) => setForm({ ...form, text: e.target.value })}
-            placeholder={"Farzandingiz uchun bepul suhbat — o'qituvchimiz bilan tanishing va darajasini bilib oling.\nQulay vaqtni tanlang 👇"}
+            placeholder={"Farzandingiz uchun bepul suhbat — maktabimiz bilan tanishing va savollaringizga javob oling.\nQulay vaqtni tanlang 👇"}
           />
           <p className="mt-1 text-xs text-gray-500">Xabar ostida har doim «📝 Suhbatga ro'yxatdan o'tish» tugmasi bo'ladi.</p>
         </div>
