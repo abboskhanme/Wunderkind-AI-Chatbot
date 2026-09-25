@@ -1,0 +1,15 @@
+# SITE_ADDRESS: ":80" locally; a domain in production (Caddy then gets HTTPS itself)
+{$SITE_ADDRESS::80} {
+	encode gzip
+
+	@backend path /api/* /webhook/* /connect/* /health
+	handle @backend {
+		reverse_proxy backend:8000
+	}
+
+	handle {
+		root * /srv
+		try_files {path} /index.html
+		file_server
+	}
+}

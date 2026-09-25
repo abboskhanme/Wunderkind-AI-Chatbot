@@ -1,0 +1,68 @@
+# Assumptions
+
+- [2026-09-23] Which channels? → Instagram + Telegram only; NUR's WhatsApp code not ported → user named only Instagram and Telegram.
+- [2026-09-23] "Telegram bot for the agent" — sales channel or staff alerts? → both: one sales bot answers customers; alerts go to TELEGRAM_CHAT_ID via a separate alert token or, if empty, the same bot → covers both readings with one token.
+- [2026-09-23] Where does NUR's ERP-side logic (settings, memory, leads, bot menu) go? → into this backend's own PostgreSQL; ERP HTTP calls replaced by direct DB calls with the same function signatures → no ERP exists here (user chose single service).
+- [2026-09-23] Sales goal for a learning center → free trial lesson / placement test booking + name + phone; lead statuses new/contacted/trial/enrolled/lost → standard learning-center funnel.
+- [2026-09-23] Follow-up for silent customers → added (once per silence, 3h default, IG only inside 24h, skipped once a phone is known) → "maksimal savdo" request; toggle in settings.
+- [2026-09-23] Default Claude model → claude-sonnet-5 (quality/cost balance for chat); changeable in panel.
+- [2026-09-23] Ported NUR files keep their Uzbek comments; new code is English → avoids rewriting working code.
+- [2026-09-23] Instagram /connect was open to anyone in NUR (anyone could attach their own account) → replaced by a panel-issued signed `state` (15 min).
+- [2026-09-23] Paused conversations: NUR dropped customer messages while the bot was paused → now they are still logged (operator sees them), only the AI reply is skipped.
+- [2026-09-23] One uvicorn worker → scheduler (daily report, follow-ups, token refresh) must not run per-worker; NUR ran 2 workers and could duplicate the daily report.
+- [2026-09-23] Daily report computed from DB (last 24h) instead of in-memory counters → survives restarts.
+- [2026-09-23] UI login in the browser was not tested by the agent (it does not type passwords); API contract checked endpoint-by-endpoint against the running stack instead.
+- [2026-09-23] Empty TG_WEBHOOK_SECRET → a secret is derived from SECRET_KEY (webhook never open); empty IG_APP_SECRET/IG_VERIFY_TOKEN → Instagram webhook rejected → qa-review found both were fail-open.
+- [2026-09-23] Panel "AI off" for one chat → lasts until switched back on (not BOT_PAUSE_HOURS) → operator intent is explicit.
+- [2026-09-23] AI_PROVIDER=mock → only via .env, the panel accepts claude|gemini → mock replies must never reach real customers by a panel mistake.
+
+## Known minor issues (not fixed yet)
+- Instagram import run AFTER the bot is live re-imports bot replies as `operator` messages (bot replies have no stored mid).
+- Telegram follow-up uses the stored Business connection for the chat (live replies use only the incoming route).
+- [2026-09-23] Which AI provider? → Gemini is the default, Claude stays as fallback → user's choice.
+- [2026-09-23] Gemini model? → gemini-3.6-flash → gemini-2.5-flash returns 404 for new API keys; Google recommends 3.6-flash.
+- [2026-09-23] How does Telegram reach a local machine without a public URL (tunnel denied)? → long polling (`getUpdates`) when PUBLIC_URL is empty, switch `TG_POLLING` → webhook needs public HTTPS; polling steps aside automatically once PUBLIC_URL is set.
+- [2026-09-23] What sample data for bot testing? → fictional KB (7 courses, 2 branches, schedule, promos, FAQ) + 5 Telegram menu items via backend/scripts/seed_demo.py (API-based, skips non-empty values) → realistic enough to test the sales flow; must be replaced before going live.
+- [2026-09-25] Lead-magnet funnel: scripted or AI? → scripted state machine with panel-editable templates; AI keeps answering non-funnel messages → funnel steps must be reliable and predictable; the AI remains for free questions.
+- [2026-09-25] Telegram bots cannot DM first → TG channel comment gets a bot reply under the comment with a deep-link button; the "DM" happens once the user presses Start → Telegram API limitation.
+- [2026-09-25] Which "page" must a Telegram-channel user follow? → the Telegram channel (getChatMember); Instagram users → the Instagram account → each source's own page.
+- [2026-09-25] IG follow check fails (API error/permission) → send the link anyway (FUNNEL_IG_FOLLOW_FAIL_OPEN=ha) and after 5 failed checks → no dead ends that lose a lead.
+- [2026-09-25] Interview slots "9:00–16:00" → 30-min slots starting 09:00, last start 15:30, capacity 1, 7 days ahead, today needs ≥60 min lead time → all configurable in the panel.
+- [2026-09-25] Number of sales messages → 3 seeded (10 min, 1 day, 2 days after PDF), sent only 09:00–21:00, stop on booking → TZ says "sotuvchi post + 1-2 ta xabar"; texts are placeholders the client must fill with real numbers.
+- [2026-09-25] Where does "farzandining sinfi" go on the lead? → funnel entry `grade` + lead.student_age = "<grade>-sinf" → no change to the existing leads table/UI.
+- [2026-09-25] Google Sheets auth → service account JSON pasted in the panel, sheet shared with its client_email; one row per person, updated in place; outbox retry → no OAuth consent screen needed, survives Google outages.
+- [2026-09-25] Booking a slot → lead status `trial` → closest existing status; `attended/no_show` tracked on the booking.
+- [2026-09-25] Voronka UI: `/funnel/bookings` date_from/date_to format → `YYYY-MM-DD`, both inclusive, browser-local dates (default today..today+7) → SPEC gives names only; the admin browser runs in the center's timezone.
+- [2026-09-25] Voronka UI: clearing a booking note → PATCH `{note: ""}` (not null) → works whether the backend applies null or skips it.
+- [2026-09-25] Voronka UI: `/funnel/test-message` tg_chat_id type → sent as a string → Pydantic accepts a numeric string for int fields, but not an int for str fields.
+- [2026-09-25] Voronka UI: funnel message image URL does not change on replacement → UI adds a `?v=<timestamp>` cache-buster (bot-menu images are served with max-age=3600) → avoids showing the old image; unknown query params are ignored by FastAPI.
+- [2026-09-25] Voronka UI: "link to lead" target → `/inbox/:leadId` → the Leadlar page has no per-lead route (drawer is local state).
+- [2026-09-25] Funnel backend: FUNNEL_ENABLED=yo'q stops what exactly? → no new entries (IG keyword comments/DMs, bot /start funnel, group comments) and no sales messages; people already mid-flow (follow gate, questions, booking buttons, reminders) keep going → switching off must not strand someone halfway.
+- [2026-09-25] Funnel backend: keyword tolerance → casefold + Cyrillic→Latin + w→v ("vunderkind" matches too); keywords of 6+ letters also match with a suffix ("wunderkindga") → Uzbek glues suffixes onto words.
+- [2026-09-25] Funnel backend: follow check at comment time → only a definite `true` sends the link in the private reply; an error there sends the normal welcome (fail-open applies to DM checks) → the profile API usually cannot answer before the person has messaged us.
+- [2026-09-25] Funnel backend: Instagram funnel comments are not written into IG leads, but DMs the funnel takes are (role user) → every commenter would flood Leadlar; people who DM us belong in Suhbatlar (qa-review). The Telegram lead gets funnel lines (kind `status`) from the PDF on.
+- [2026-09-25] Funnel backend: sales sequence stops on a `scheduled` OR `attended` booking (cancelled/no_show continue) → someone who already came should not get "book now" messages.
+- [2026-09-25] Funnel backend: a sales message overdue by more than 3 days is skipped, never sent late → a message added months later must not blast every old entry; normal quiet-hour/downtime delays are well under 3 days.
+- [2026-09-25] Funnel backend: booking window "next 7 days" → 7 calendar days including today, filtered by work days/holidays/free slots (not 7 working days) → matches "today's slots need ≥60 min lead time".
+- [2026-09-25] Funnel backend: merge (TG user opens an IG link) → IG source replaces `telegram_direct` (the campaign wins over a bare /start); the IG entry's sheet row is reused if the TG entry has none → correct attribution, no orphan row.
+- [2026-09-25] Funnel backend: someone else's forwarded IG link → the new Telegram user gets their own `telegram_direct` entry; the IG data stays with the original person → never mix two families' data.
+- [2026-09-25] Funnel backend: /start after /stop → opted back in; reminders are sent even to opted-out people with a booking → pressing Start is explicit consent; a reminder is a service message for a booking they made.
+- [2026-09-25] Funnel backend: menu buttons and slash commands during the questions go to the menu/command handlers, not taken as a name → "💰 Narxlar" must never become someone's name.
+- [2026-09-25] Funnel backend: stats `link_sent` counts Telegram-sourced entries as having the link (deep link by definition); `bookings.*` = bookings created in the period, `today` = non-cancelled bookings starting today → the step funnel stays monotonic.
+- [2026-09-25] Funnel backend: GET /funnel/slots lists every slot of the day with `free` (0 when full, past slots included) → it is a staff occupancy view, not the customer picker.
+- [2026-09-25] Funnel backend: which sheet row belongs to which entry → read from a 14th column "ID" (entry.id) every batch; `sheet_row` is only the last known row; resync marks all dirty → sorting/deleting rows in the sheet can no longer send an update to the wrong family (qa-review).
+- [2026-09-25] Funnel backend: PDF upload content type → application/pdf, application/x-pdf or application/octet-stream accepted, but the `%PDF` magic is mandatory → some browsers send octet-stream for PDFs.
+- [2026-09-25] Funnel backend: 3 sales messages seeded in the migration (not at startup), switched OFF; any text still containing `[raqam…]`/`[imtiyoz…]` is never sent even if active → deleted seeds must not come back after a restart, and unfilled placeholders must never reach a parent (qa-review).
+- [2026-09-25] Funnel backend: the booking button is also attached to the PDF message → the fastest path to an interview; sales messages carry it as specified.
+- [2026-09-25] Funnel qa-review: /stop mid-questions → "paused" = `opted_out` while the step is a collection step (no new step value, the frontend enum stays); /start or an inline-button tap resumes → a paused person's free text must reach the AI, and the Voronka contract must not change.
+- [2026-09-25] Funnel qa-review: leaving the questions → a text with "?" goes to the AI; an invalid answer gets a hint once, the 2nd invalid in a row goes to the AI (counter in the state store, 1 h, reset by a valid answer); the step is kept so a later valid answer continues → no one is trapped in a loop of "Iltimos, ism-familiyangizni yozing".
+- [2026-09-25] Funnel qa-review: names → max 4 words and no "?" → "Menga maktab haqida aytib bering" is a question, not a name; 4 words fit "Abdullayeva Malika Anvar qizi".
+- [2026-09-25] Funnel qa-review: PDF send failure → `pdf_pending`, the "coming soon" text once, a staff alert at most hourly, retries with backoff 1, 2, 4 … 60 min without giving up (columns `pdf_attempts`, `pdf_retry_at` in a new migration 087311873265, not an edit of 74ce2ab64d21) → a new migration is safe even if 74ce2ab64d21 already ran somewhere.
+- [2026-09-25] Funnel qa-review: Instagram DM from someone with no entry starts the funnel only when it is (nearly) just the keyword: no "?", ≤ 2 extra words; comments stay broad → "Wunderkind'da narxlar qancha?" is a sales question for the AI.
+- [2026-09-25] Funnel qa-review: Sheets errors → 401/403/429/5xx/network (and token failures) stop the batch; any other 4xx skips only that entry (row forgotten, stays dirty) → one bad row must not block everyone else.
+- [2026-09-25] Funnel qa-review: merged Instagram entry's sheet row → taken over by the Telegram entry when that has no row yet, otherwise its "Manba" cell is set to "Birlashtirildi" (column `sheet_merged_id`) → no duplicate or orphan rows without explanation.
+- [2026-09-25] Funnel qa-review: GSHEET_SPREADSHEET_ID / GSHEET_WORKSHEET change → every entry re-exported (sheet_row cleared, dirty) → the old sheet's rows mean nothing in the new one.
+- [2026-09-25] Funnel qa-review: a reschedule marks the old booking `rescheduled=true` (status stays `cancelled`, API unchanged); stats count only real cancellations and bookings → changing the time is not a lost interview.
+- [2026-09-25] Funnel qa-review: PATCH booking status → `scheduled` from another status is refused (400) → capacity and the one-active-booking rule live in the bot; the person books again there.
+- [2026-09-25] Funnel qa-review: reminder catch-up at startup only between FUNNEL_REMINDER_TIME and 12:00 local → a missed 07:00 reminder is still useful at 09:30, not at 15:00.
+- [2026-09-25] Funnel qa-review: group keyword replies skip chats listed in TELEGRAM_CHAT_ID → staff typing "wunderkind" in the alert group must not get a customer reply.
