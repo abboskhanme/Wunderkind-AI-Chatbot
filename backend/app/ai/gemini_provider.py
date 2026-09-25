@@ -24,6 +24,7 @@ from app.config import settings
 FALLBACK_MODEL = "gemini-3.6-flash"
 # Per-attempt limit: a normal reply takes 2-5 s; anything near this is a stuck call
 ATTEMPT_TIMEOUT = 25.0
+RETRY_PAUSE = 1.5
 _RETRYABLE = {429, 500, 502, 503, 504}
 
 
@@ -62,7 +63,9 @@ class GeminiProvider(AIProvider):
             for m in messages
         ]
         primary = settings.GEMINI_MODEL
-        models = [primary] + ([FALLBACK_MODEL] if primary != FALLBACK_MODEL else [])
+        # Overload spikes are short: fallback model, then the fallback once more
+        models = [primary] + ([FALLBACK_MODEL] if primary != FALLBACK_MODEL else []) \
+            + [FALLBACK_MODEL]
         response = None
         for index, model in enumerate(models):
             last = index == len(models) - 1
@@ -76,6 +79,8 @@ class GeminiProvider(AIProvider):
                     raise
                 logger.warning("Gemini {} unavailable ({}) — retrying on {}",
                                model, code or "timeout", models[index + 1])
+                if model == models[index + 1]:
+                    await asyncio.sleep(RETRY_PAUSE)
         parsed = getattr(response, "parsed", None)
         if isinstance(parsed, output_model):
             return parsed

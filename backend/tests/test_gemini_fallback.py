@@ -67,3 +67,18 @@ def test_non_retryable_error_is_raised(monkeypatch):
     with pytest.raises(errors.ClientError):
         _run(provider)
     assert calls == ["gemini-3.5-flash-lite"]
+
+
+def test_fallback_retried_once_when_also_overloaded(monkeypatch):
+    monkeypatch.setattr(gp, "RETRY_PAUSE", 0)
+    attempts = {"n": 0}
+
+    async def behaviour(model):
+        attempts["n"] += 1
+        if attempts["n"] < 3:
+            raise errors.ServerError(503, {"error": {"message": "high demand"}})
+        return _Resp()
+
+    provider, calls = _provider(monkeypatch, behaviour)
+    assert _run(provider).reply == "ok"
+    assert calls == ["gemini-3.5-flash-lite", gp.FALLBACK_MODEL, gp.FALLBACK_MODEL]
