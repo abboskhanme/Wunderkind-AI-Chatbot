@@ -15,6 +15,7 @@ from loguru import logger
 from sqlalchemy import delete, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.config import settings
 from app.funnel import texts
 from app.leads import client as leads_client
 from app.models.funnel import (
@@ -220,6 +221,15 @@ async def bot_link(payload: str) -> Optional[str]:
 
     username = await telegram_bot_username()
     return f"https://t.me/{username}?start={payload}" if username else None
+
+
+async def ig_link(payload: str) -> Optional[str]:
+    """Link for Instagram DMs: our `/go/<payload>` page (Instagram's in-app
+    browser blocks t.me → Telegram app), or plain t.me without a public URL."""
+    direct = await bot_link(payload)
+    if direct and settings.PUBLIC_URL:
+        return f"{settings.PUBLIC_URL.rstrip('/')}/go/{payload}"
+    return direct
 
 
 def is_blocked(result: dict) -> bool:

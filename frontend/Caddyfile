@@ -3,7 +3,8 @@
 	encode gzip
 
 	# /privacy /terms /data-deletion: public legal pages rendered by the backend (Meta App Review)
-	@backend path /api/* /webhook/* /connect/* /health /privacy /terms /data-deletion
+	# /go/*: landing page behind the Instagram «Qo'llanmani olish» button (opens Telegram)
+	@backend path /api/* /webhook/* /connect/* /health /privacy /terms /data-deletion /go/*
 	handle @backend {
 		reverse_proxy backend:8000
 	}

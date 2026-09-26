@@ -277,7 +277,7 @@ async def _send_quick(igsid: str, recipient: dict, text: str) -> bool:
 
 async def _send_link(igsid: str, recipient: dict, token: str, funnel: FunnelView) -> bool:
     """FUNNEL_IG_LINK_MESSAGE with a web_url button; plain text + URL as fallback."""
-    url = await repo.bot_link(token)
+    url = await repo.ig_link(token)
     if not url:
         logger.error("Funnel: Telegram bot username unknown — Instagram link not sent")
         await _alert_no_bot()

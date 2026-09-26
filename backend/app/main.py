@@ -32,6 +32,7 @@ from app.funnel import gsheet as funnel_gsheet
 from app.funnel import reminders as funnel_reminders
 from app.funnel import sales as funnel_sales
 from app.legal.pages import router as legal_pages_router
+from app.funnel.landing import router as funnel_landing_router
 from app.instagram.oauth import ensure_identity, refresh_token_if_due
 from app.instagram.meta_callbacks import router as meta_callbacks_router
 from app.instagram.oauth import router as oauth_router
@@ -200,6 +201,7 @@ app.include_router(tg_webhook_router)
 app.include_router(oauth_router)
 app.include_router(meta_callbacks_router)
 app.include_router(legal_pages_router)
+app.include_router(funnel_landing_router)
 
 
 @app.get("/health")

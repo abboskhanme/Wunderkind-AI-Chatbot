@@ -48,6 +48,15 @@ def _error_text(data: dict) -> str:
     return str(msg)
 
 
+def _no_consent(resp: httpx.Response) -> bool:
+    """IG error 230 "User consent is required" (profile of someone who has not
+    messaged us yet). Instagram returns it as HTTP 500, but it is not transient."""
+    try:
+        return int((resp.json().get("error") or {}).get("code") or 0) == 230
+    except (ValueError, AttributeError, TypeError):
+        return False
+
+
 def _is_window_error(data: dict) -> bool:
     err = (data or {}).get("error") or {}
     if err.get("code") in _WINDOW_ERROR_CODES:
@@ -104,6 +113,10 @@ class InstagramClient:
                     resp = await client.get(url, params=params)
                 if resp.status_code == 200:
                     return resp.json()
+                if _no_consent(resp):
+                    # The person has not messaged us yet — retrying cannot help
+                    logger.info("IG API GET: no user consent yet for {}", path)
+                    return {}
                 if resp.status_code in (429, 500, 503):
                     logger.warning(
                         "IG API GET {} ({}-urinish), backoff {}s: {}",
