@@ -205,9 +205,9 @@ CATALOG: tuple[SettingItem, ...] = (
                      "(mijoz yo'qolmasin)."),
     SettingItem("FUNNEL_IG_LINK_VIA_PAGE", "Instagram: havola oraliq sahifa orqali", "funnel",
                 type="select", options=YES_NO,
-                help="«yo'q» — tugma to'g'ridan-to'g'ri t.me (Telegram) ga olib o'tadi. «ha» — "
-                     "avval sayt sahifasi ochiladi (Telegram'da ochish tugmalari, QR kod). "
-                     "Instagram ichida t.me ochilmay orqaga qaytsa «ha» qiling."),
+                help="«ha» (tavsiya) — qurilma avtomatik aniqlanadi: telefonda darhol Telegram "
+                     "ilovasi, kompyuterda Telegram Web ochiladi. «yo'q» — oddiy t.me havolasi "
+                     "(Instagram ichida ochilmay orqaga qaytishi mumkin)."),
     SettingItem("FUNNEL_IG_COMMENT_REPLY", "Instagram: izohga ochiq javob", "funnel",
                 type="textarea",
                 help="Variantlarni «|» bilan ajrating — har izohga tasodifiy biri yoziladi "

@@ -21,15 +21,17 @@ def bot(monkeypatch):
     monkeypatch.setattr(agent_status, "telegram_bot_username", username)
 
 
-def test_ig_link_goes_straight_to_telegram_by_default(monkeypatch, bot):
+def test_ig_link_uses_the_redirect_page_by_default(monkeypatch, bot):
+    """t.me bounces back inside Instagram's browser — the page detects the device."""
     monkeypatch.setattr(settings, "PUBLIC_URL", "https://chatbot.example.uz/")
-    assert asyncio.run(repo.ig_link("abc123")) == "https://t.me/wk_bot?start=abc123"
-
-
-def test_ig_link_uses_landing_page_when_enabled(monkeypatch, bot):
-    monkeypatch.setattr(settings, "PUBLIC_URL", "https://chatbot.example.uz/")
-    monkeypatch.setattr(settings, "FUNNEL_IG_LINK_VIA_PAGE", True)
+    assert settings.FUNNEL_IG_LINK_VIA_PAGE is True
     assert asyncio.run(repo.ig_link("abcDEF123_-x")) == "https://chatbot.example.uz/go/abcDEF123_-x"
+
+
+def test_ig_link_plain_tme_when_page_disabled(monkeypatch, bot):
+    monkeypatch.setattr(settings, "PUBLIC_URL", "https://chatbot.example.uz/")
+    monkeypatch.setattr(settings, "FUNNEL_IG_LINK_VIA_PAGE", False)
+    assert asyncio.run(repo.ig_link("abc123")) == "https://t.me/wk_bot?start=abc123"
 
 
 def test_ig_link_falls_back_to_tme_without_public_url(monkeypatch, bot):
@@ -49,10 +51,13 @@ def test_landing_page_offers_every_route_to_telegram(monkeypatch, bot):
     assert "x-safari-https://chatbot.example.uz/go/abcDEF123_-x" in body
     assert "/start abcDEF123_-x" in body
     assert r.headers["cache-control"] == "no-store"
-    # Computer: Telegram Web + a QR code to open the bot on the phone
+    # Automatic redirect: Android → intent (app), iPhone → tg:// then Safari from
+    # Instagram's browser, computer → Telegram Web
     assert ("https://web.telegram.org/k/#?tgaddr=tg%3A%2F%2Fresolve%3Fdomain%3Dwk_bot"
             "%26start%3DabcDEF123_-x") in body
-    assert "<svg" in body and 'class="segno"' in body
+    script = body[body.index("<script>"):]
+    assert "location.href = INTENT" in script and "location.href = TG" in script
+    assert "location.href = SAFARI" in script and "location.replace(WEB)" in script
 
 
 @pytest.mark.parametrize("token", ["a%22%3E%3Cscript%3E", "x" * 41, "a.b"])

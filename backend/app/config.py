@@ -95,9 +95,10 @@ class Settings(BaseSettings):
     FUNNEL_KEYWORDS: str = "wunderkind, вундеркинд"
     FUNNEL_IG_REQUIRE_FOLLOW: bool = True
     FUNNEL_IG_FOLLOW_FAIL_OPEN: bool = True
-    # Instagram link: False = straight to t.me (client's choice); True = via our
-    # /go page (escapes Instagram's in-app browser if t.me bounces back)
-    FUNNEL_IG_LINK_VIA_PAGE: bool = False
+    # Instagram link: True = via our /go page, which detects the device and
+    # redirects at once (phone → Telegram app, computer → Telegram Web) — t.me
+    # itself bounces back inside Instagram's in-app browser; False = plain t.me
+    FUNNEL_IG_LINK_VIA_PAGE: bool = True
     FUNNEL_IG_COMMENT_REPLY: str = (
         # "|" separates variants — one is picked at random (identical replies
         # to hundreds of comments look like spam to Instagram)

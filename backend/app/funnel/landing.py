@@ -10,9 +10,8 @@ page flashes and closes. Our own page offers every route that can escape it:
 - on iOS an `x-safari-https://` link (opens Safari, iOS 17+),
 - the plain t.me link, and a manual «/start <code>» the parent can send to the
   bot themselves (the bot treats it exactly like the deep link).
-On a computer (instagram.com shows no buttons at all, so parents arrive via the
-plain-text link): Telegram Desktop (`tg://`), Telegram Web, and a QR code to
-open the bot on the phone.
+The page redirects automatically by device (phone → app, computer → Telegram
+Web); the buttons are only a manual fallback.
 """
 from __future__ import annotations
 
@@ -21,8 +20,8 @@ import re
 from html import escape
 from urllib.parse import quote
 
-import segno
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from loguru import logger
 from fastapi.responses import HTMLResponse
 
 from app.config import settings
@@ -53,9 +52,6 @@ h1{font-size:22px;line-height:1.3;margin:0 0 8px}p{margin:0 0 14px}
 .code code{flex:1;font:600 16px ui-monospace,Menlo,monospace;background:#fff;border:1px dashed #94a3b8;border-radius:8px;padding:10px;word-break:break-all}
 .code button{padding:10px 14px;border:0;border-radius:8px;background:#334155;color:#fff;font:inherit;font-size:15px}
 .hide{display:none}
-.desk{margin:18px 0 0;padding:16px 0 0;border-top:1px solid #e2e8f0;text-align:center}
-.desk svg{display:block;margin:8px auto 6px;max-width:100%;height:auto}
-.small{font-size:14px;color:#64748b}
 """
 
 
@@ -71,38 +67,33 @@ def _page(title: str, body: str, status: int = 200) -> HTMLResponse:
 
 
 def render(bot: str, token: str) -> HTMLResponse:
-    """The landing page for one deep-link payload (values already validated)."""
+    """The landing page for one deep-link payload (values already validated).
+
+    It redirects by itself (nothing to tap): Android → the Telegram app via an
+    intent (t.me if the app is missing); iPhone → the app via tg://, and from
+    Instagram's in-app browser, if that is blocked, Safari (which then opens the
+    app); computer → Telegram Web in the browser. The buttons stay as a manual
+    fallback."""
     tme = f"https://t.me/{bot}?start={token}"
     tg = f"tg://resolve?domain={bot}&start={token}"
     intent = (f"intent://resolve?domain={bot}&start={token}#Intent;scheme=tg;"
               f"package=org.telegram.messenger;S.browser_fallback_url={quote(tme, safe='')};end")
     here = f"{settings.PUBLIC_URL.rstrip('/')}/go/{token}"
     safari = "x-safari-" + here if here.startswith("https://") else ""
-    command = f"/start {token}"
     web = f"https://web.telegram.org/k/#?tgaddr={quote(tg, safe='')}"
-    qr = segno.make(tme, error="m").svg_inline(scale=5, dark="#0f172a", border=2)
-    company = escape(settings.COMPANY_NAME or "Wunderkind")
+    command = f"/start {token}"
 
     body = f"""
 <div class="card">
-  <h1>📘 Qo'llanmani Telegram'da oling</h1>
-  <p>{company} qo'llanmasi Telegram botimizda. Pastdagi tugmani bosing — bot ochiladi,
-  «Start» ni bosing.</p>
+  <h1>Telegram ochilmoqda…</h1>
+  <p>Telegram ochilgach, pastdagi <b>«START»</b> tugmasini bosing — qo'llanma o'sha
+  yerda. Ochilmasa, tugmalardan birini bosing:</p>
   <a id="open" class="btn primary" href="{escape(tg)}">Telegram'da ochish</a>
-  <a class="btn secondary" href="{escape(tme)}">t.me orqali ochish</a>
-  <a id="safari" class="btn ghost hide" href="{escape(safari)}">Safari'da ochish</a>
-  <a id="web" class="btn ghost hide" href="{escape(web)}" target="_blank" rel="noopener">Telegram Web'da ochish</a>
-  <div id="desk" class="desk hide">
-    <b>Telefoningizda ochish uchun</b> — kamera bilan QR kodni skanerlang:
-    {qr}
-    <div class="small">Kompyuterda Telegram o'rnatilgan bo'lsa — «Telegram'da ochish»,
-    bo'lmasa — «Telegram Web'da ochish».</div>
-  </div>
+  <a id="safari" class="btn secondary hide" href="{escape(safari)}">Safari orqali ochish</a>
+  <a id="web" class="btn secondary hide" href="{escape(web)}">Telegram Web'da ochish</a>
+  <a class="btn ghost" href="{escape(tme)}">t.me orqali ochish</a>
   <div class="hint">
-    <b>Ochilmayaptimi?</b> Instagram ichidagi brauzer Telegram'ni ochishga ruxsat
-    bermasligi mumkin. O'ng yuqoridagi <b>⋯</b> tugmasini bosib,
-    <b>«Tashqi brauzerda ochish»</b> ni tanlang.
-    <br><br>Yoki Telegram'da <b>@{escape(bot)}</b> botini toping va shu xabarni yuboring:
+    Yoki Telegram'da <b>@{escape(bot)}</b> botini toping va shu xabarni yuboring:
     <div class="code"><code id="cmd">{escape(command)}</code>
     <button id="copy" type="button">Nusxa</button></div>
   </div>
@@ -110,14 +101,17 @@ def render(bot: str, token: str) -> HTMLResponse:
 <script>
 (function(){{
   var ua = navigator.userAgent || "";
+  var inApp = /Instagram|FBAN|FBAV|FB_IAB/i.test(ua);
+  var android = /Android/i.test(ua);
+  var ios = /iPhone|iPad|iPod/i.test(ua) ||
+            (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+  var mobile = android || ios || /Mobile/i.test(ua);
+  var TG = {json.dumps(tg)}, INTENT = {json.dumps(intent)},
+      SAFARI = {json.dumps(safari)}, WEB = {json.dumps(web)};
   var open = document.getElementById("open");
-  if (/Android/i.test(ua)) open.href = {json.dumps(intent)};
-  if (/iPhone|iPad|iPod/i.test(ua) && {json.dumps(bool(safari))})
-    document.getElementById("safari").classList.remove("hide");
-  if (!/Android|iPhone|iPad|iPod|Mobile/i.test(ua)) {{
-    document.getElementById("web").classList.remove("hide");
-    document.getElementById("desk").classList.remove("hide");
-  }}
+  if (android) open.href = INTENT;
+  if (ios && inApp && SAFARI) document.getElementById("safari").classList.remove("hide");
+  if (!mobile) document.getElementById("web").classList.remove("hide");
   var copy = document.getElementById("copy");
   copy.onclick = function(){{
     var text = document.getElementById("cmd").textContent;
@@ -125,16 +119,31 @@ def render(bot: str, token: str) -> HTMLResponse:
       copy.textContent = "✓";
     }});
   }};
-  // Outside in-app browsers the app usually opens right away
-  if (!/Instagram|FBAN|FBAV/i.test(ua)) setTimeout(function(){{ location.href = open.href; }}, 300);
+  // Automatic: phone → the app first, computer → the browser (Telegram Web)
+  if (android) {{
+    location.href = INTENT;
+  }} else if (ios) {{
+    location.href = TG;
+    // Instagram's browser may block tg:// — still here after a moment → Safari
+    if (inApp && SAFARI) setTimeout(function(){{
+      if (!document.hidden) location.href = SAFARI;
+    }}, 1200);
+  }} else if (!mobile) {{
+    location.replace(WEB);
+  }}
 }})();
 </script>"""
-    return _page("Qo'llanmani olish — Telegram", body)
+    return _page("Telegram ochilmoqda — qo'llanma", body)
 
 
 @router.api_route("/go/{token}", methods=["GET", "HEAD"], include_in_schema=False)
-async def landing(token: str) -> HTMLResponse:
+async def landing(token: str, request: Request) -> HTMLResponse:
     from app.services.agent_status import telegram_bot_username
+
+    # Which devices/browsers reach the page — the only way to see why Telegram
+    # did not open for someone
+    logger.info("Funnel landing /go/{} ua={}", token[:40],
+                (request.headers.get("user-agent") or "")[:200])
 
     if not _TOKEN_RE.fullmatch(token):
         return _page("Havola noto'g'ri", "<div class=\"card\"><h1>Havola noto'g'ri</h1>"
