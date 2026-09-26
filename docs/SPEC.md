@@ -599,3 +599,92 @@ new fields); routing by keyword and media filter; keyword collision 400;
 `tgc_<slug>`/`f_<slug>` deep links; person in two funnels; per-funnel texts
 override + fallback; per-funnel PDF; delete/deactivate rules; RBAC on new
 endpoints.
+
+## 12. Meta App Review readiness — legal pages & callbacks (added 2026-09-26)
+
+Meta requires public URLs before an app can go Live / pass App Review:
+Privacy Policy, Terms of Service, User Data Deletion (instructions URL or
+callback), and (Instagram Login) a Deauthorize callback.
+
+### 12.1 Public pages (server-rendered HTML, no JS, no auth)
+`GET /privacy`, `GET /terms`, `GET /data-deletion` (optional `?code=<confirmation>`
+shows that request's status). Rendered by the backend (Jinja-free: plain
+f-strings/`string.Template`, HTML-escaped values), bilingual: Uzbek (Latin) first,
+English below (reviewers read English), same simple styled layout, `lang` attrs,
+mobile friendly, links between the three pages. Caddy routes these three paths
+to the backend (add to the `@backend` matcher).
+
+Content must describe the ACTUAL system (see §2, §10, §11):
+- Who: `LEGAL_ENTITY_NAME` (fallback COMPANY_NAME), private school, contact
+  `LEGAL_CONTACT_EMAIL`, `LEGAL_CONTACT_PHONE`, `LEGAL_ADDRESS`, website
+  `PUBLIC_URL`; "last updated" date = the date the page text last changed
+  (constant in code).
+- Data collected: Instagram-scoped user id & username, comments/DMs sent to our
+  account, Telegram user id/username/messages sent to our bot, name, phone number
+  (only when the user shares it), child's grade, interview booking date/time,
+  Instagram follow status (yes/no) of the user who contacted us, Telegram channel
+  membership (yes/no).
+- Purpose: answering questions, sending the requested guide (PDF), admission
+  follow-up messages, booking/reminding the admission interview. No ads
+  targeting, no sale of data.
+- Processors: Google (Gemini API — generating replies; Google Sheets — staff
+  lead list), Meta (Instagram API), Telegram, hosting provider (DigitalOcean,
+  Frankfurt). AI disclosure.
+- Retention: while needed for admission communication, max 24 months after last
+  contact, or until a deletion request.
+- Rights & deletion: how to request (email/phone, or the data-deletion page;
+  `/stop` in the Telegram bot stops messages); deletion within 30 days.
+- Children: the service is addressed to parents/guardians; we don't knowingly
+  collect data directly from children under 13; the child's grade is provided by
+  the parent.
+- Terms: service description, acceptable use, no guarantee of admission,
+  AI-generated replies may contain mistakes (staff confirm details), liability
+  limitation, governing law Republic of Uzbekistan, contact.
+- Data deletion page: instructions (write to email/phone or send "/delete"-style
+  request; for Instagram users: remove the app in Instagram → Settings → Apps and
+  websites), and the status lookup by confirmation code.
+
+### 12.2 Meta callbacks (`/connect/*`, public, signature-verified)
+- `POST /connect/data-deletion` — form field `signed_request`
+  (`base64url(sig).base64url(payload)`, HMAC-SHA256 with `IG_APP_SECRET`; reject
+  bad/missing signature with 400). Payload `user_id` = the Instagram-scoped id of
+  the app user. Action: record a `data_deletion_requests` row
+  (id, confirmation_code 16 url-safe chars unique, source "meta_callback",
+  external_user_id, status `received|completed`, created_at, completed_at);
+  delete leads (+ messages cascade) and funnel entries whose Instagram id equals
+  that user id; if the user id equals our connected IG account (IG_USER_ID /
+  IG_ACCOUNT_ID) → clear IG access token/identity settings (disconnect); mark
+  completed; staff alert. Respond JSON
+  `{"url": "{PUBLIC_URL}/data-deletion?code=<code>", "confirmation_code": "<code>"}`.
+- `POST /connect/deauthorize` — same signature check; if it is our connected
+  account → clear IG token/identity (disconnect) + staff alert; always 200.
+- Idempotent on repeated requests for the same user (new code each time is fine).
+
+### 12.3 Settings (new catalog group `legal` "Yuridik ma'lumotlar", shown in Sozlamalar)
+`LEGAL_ENTITY_NAME`, `LEGAL_CONTACT_EMAIL` (validated email), `LEGAL_CONTACT_PHONE`,
+`LEGAL_ADDRESS`. Empty → pages still render (fallbacks: COMPANY_NAME;
+FUNNEL_STAFF_PHONE; FUNNEL_ADDRESS) and show no empty labels.
+
+### 12.4 Panel
+Sozlamalar → Instagram status card: add copyable URLs "Privacy Policy URL",
+"Terms of Service URL", "User data deletion (callback URL)", "Deauthorize callback
+URL" (from `AgentStatus.webhooks` / a new `legal_urls` object in AgentStatus:
+`{privacy, terms, data_deletion_page, data_deletion_callback, deauthorize}`),
+with a short hint where each goes in the Meta dashboard. Sozlamalar shows the new
+`legal` group automatically.
+
+### 12.5 Docs
+`docs/META_APP_REVIEW.md` (English, for the client to paste): app description,
+per-permission justification for `instagram_business_basic`,
+`instagram_business_manage_messages`, `instagram_business_manage_comments`
+(what we do, why needed, how a user benefits), step-by-step screencast script for
+each, reviewer test instructions (panel login = a dedicated operator account the
+client creates; test Instagram account), and the checklist of dashboard fields
+(URLs above, icon, category Education, contact email, Business Verification).
+Uzbek short summary in QOLLANMA (new section).
+
+### 12.6 Tests
+Signature verification (valid/invalid/missing), deletion removes the right lead,
+messages, funnel entries and keeps others, own-account deletion disconnects
+Instagram, confirmation status page shows the code, pages return 200 text/html
+without auth and HTML-escape settings values, new settings validation.

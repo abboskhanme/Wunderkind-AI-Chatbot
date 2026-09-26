@@ -92,6 +92,13 @@ _PATTERNS: dict[str, tuple[str, str]] = {
     "FUNNEL_BOOK_BUTTON": (r".{1,64}", "1–64 belgi"),
     "FUNNEL_STAFF_NAME": (r".{1,80}", "1–80 belgi"),
     "FUNNEL_STAFF_PHONE": (r"[+\d][\d\s()-]{4,30}", "telefon raqami bo'lsin (masalan +998 90 123 45 67)"),
+    "LEGAL_ENTITY_NAME": (r"[^\r\n]{1,200}", "1–200 belgi, bitta qatorda"),
+    "LEGAL_CONTACT_EMAIL": (r"[A-Za-z0-9.!#$%&'*+/=?^_`{|}~-]{1,64}@[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)*"
+                            r"\.[A-Za-z]{2,24}",
+                            "e-mail manzili ko'rinishida bo'lsin (masalan info@maktab.uz)"),
+    "LEGAL_CONTACT_PHONE": (r"[+\d][\d\s()-]{4,30}",
+                            "telefon raqami bo'lsin (masalan +998 71 123 45 67)"),
+    "LEGAL_ADDRESS": (r"[\s\S]{1,300}", "1–300 belgi"),
     "GSHEET_WORKSHEET": (r"[^\[\]*?:/\\]{1,100}", "1–100 belgi, [ ] * ? : / \\ belgilarisiz"),
 }
 

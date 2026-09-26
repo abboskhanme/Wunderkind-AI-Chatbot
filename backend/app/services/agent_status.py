@@ -53,6 +53,20 @@ async def telegram_webhook_state(expected_url: str | None) -> dict:
     return {"state": "ok", "error": None}
 
 
+def legal_urls(base: str) -> dict:
+    """Public URLs Meta asks for in the App Dashboard (SPEC §12.4)."""
+    def url(path: str) -> str | None:
+        return f"{base}{path}" if base else None
+
+    return {
+        "privacy": url("/privacy"),
+        "terms": url("/terms"),
+        "data_deletion_page": url("/data-deletion"),
+        "data_deletion_callback": url("/connect/data-deletion"),
+        "deauthorize": url("/connect/deauthorize"),
+    }
+
+
 async def agent_status() -> dict:
     base = settings.PUBLIC_URL.rstrip("/")
     tg_url = f"{base}/webhook/telegram" if base else None
@@ -70,6 +84,7 @@ async def agent_status() -> dict:
             "instagram": f"{base}/webhook/instagram" if base else None,
             "telegram": tg_url,
         },
+        "legal_urls": legal_urls(base),
         "telegram_webhook": await telegram_webhook_state(tg_url),
         "instagram_ready": bool(settings.IG_APP_ID and settings.IG_APP_SECRET
                                 and settings.IG_VERIFY_TOKEN and base),

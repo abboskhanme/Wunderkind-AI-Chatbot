@@ -36,6 +36,9 @@ WEB_HTTPS_PORT=443
 Caddy obtains the TLS certificate itself. Webhook URLs (shown in the panel):
 `{PUBLIC_URL}/webhook/instagram`, `{PUBLIC_URL}/webhook/telegram`.
 Instagram OAuth redirect URI to register in the Meta app: `{PUBLIC_URL}/connect/callback`.
+Public legal pages and Meta callbacks (for going Live / App Review): `/privacy`, `/terms`,
+`/data-deletion`, `POST /connect/data-deletion`, `POST /connect/deauthorize` — see
+`docs/META_APP_REVIEW.md`.
 
 ## Configure (admin panel → Sozlamalar)
 

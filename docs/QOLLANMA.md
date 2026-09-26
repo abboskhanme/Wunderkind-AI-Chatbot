@@ -168,3 +168,42 @@ Qoidalar:
   yangilanishda to'ladi). **«O» ustuni «Voronka» uchun ajratilgan** — unga o'z
   ma'lumotingizni yozmang. Agar u yerda boshqa narsa bo'lsa, tizim uni o'chirmaydi:
   «Voronka» yozilmaydi va Telegramga ogohlantirish keladi.
+
+## 6. Meta App Review va yuridik sahifalar
+
+Instagram ilovasini «Live» rejimiga o'tkazish (va kerak bo'lsa App Review) uchun
+Meta ochiq sahifalarni talab qiladi. Ular tizimda tayyor, o'zbek va ingliz tilida:
+
+- **Maxfiylik siyosati** — `{sayt}/privacy`
+- **Foydalanish shartlari** — `{sayt}/terms`
+- **Ma'lumotlarni o'chirish** — `{sayt}/data-deletion` (mijoz tasdiqlash kodi bilan
+  so'rovi holatini shu yerda tekshiradi)
+
+### 6.1. Nima qilish kerak (administrator)
+1. **Sozlamalar → Yuridik ma'lumotlar**: tashkilotning rasmiy nomi, e-mail, telefon
+   va manzilni kiriting va saqlang. Bo'sh qolsa sahifalarda maktab nomi, voronkadagi
+   xodim telefoni va manzil ko'rsatiladi; e-mail bo'lmasa ko'rsatilmaydi — lekin Meta
+   e-mail kutadi, albatta kiriting.
+2. Uchala sahifani ochib, ma'lumotlar to'g'riligini tekshiring.
+3. **Sozlamalar → Instagram → «Meta App Review uchun manzillar»** dagi manzillarni
+   nusxalab, Meta ilovasiga qo'ying: Privacy Policy va Terms of Service — *App settings
+   → Basic*; Data deletion callback — *App settings → Basic* va *Instagram → Business
+   login settings*; Deauthorize callback — *Instagram → Business login settings*.
+4. To'liq ro'yxat, ruxsatlar uchun inglizcha matnlar, video ssenariylari va
+   tekshiruvchi uchun ko'rsatma — `docs/META_APP_REVIEW.md` (dasturchidan so'rang).
+   Tekshiruvchi uchun **Foydalanuvchilar** bo'limida alohida «operator» akkaunt
+   oching va tekshiruvdan keyin o'chirib qo'ying.
+
+### 6.2. O'chirish so'rovlari
+- Meta orqali avtomatik so'rov kelsa, tizim shu Instagram foydalanuvchisining
+  suhbatlari, lead'lari, voronka yozuvlari va suhbatga yozilishini o'zi o'chiradi,
+  Google Sheets'dagi qatorini tozalaydi va Telegramga xabar yuboradi (kod va sonlar,
+  ism-telefonsiz).
+- Agar so'rov **maktabning o'z Instagram akkauntidan** kelsa (ilova Instagram
+  sozlamalaridan olib tashlansa), Instagram **uziladi** — qayta ulash uchun
+  Sozlamalar → Instagram → «Ulash».
+- Ota-ona e-mail, telefon yoki xabar orqali o'chirishni so'rasa — 30 kun ichida
+  bajarilishi shart. Hozircha panelda lead'ni o'chirish faqat suhbatni o'chiradi;
+  voronka yozuvi va jadval qatori qoladi — bunday so'rovni dasturchiga yuboring.
+- Maxfiylik siyosatida ma'lumotlar oxirgi murojaatdan keyin ko'pi bilan 24 oy
+  saqlanishi yozilgan — eski lead'larni vaqti-vaqti bilan tozalab turing.

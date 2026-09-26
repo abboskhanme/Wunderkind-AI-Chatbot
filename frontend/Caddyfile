@@ -2,7 +2,8 @@
 {$SITE_ADDRESS::80} {
 	encode gzip
 
-	@backend path /api/* /webhook/* /connect/* /health
+	# /privacy /terms /data-deletion: public legal pages rendered by the backend (Meta App Review)
+	@backend path /api/* /webhook/* /connect/* /health /privacy /terms /data-deletion
 	handle @backend {
 		reverse_proxy backend:8000
 	}

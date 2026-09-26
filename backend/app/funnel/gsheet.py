@@ -16,6 +16,7 @@ Not configured → no-op.
 """
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import re
@@ -404,3 +405,57 @@ def _hint(exc: SheetError, account: dict) -> str:
     if exc.status == 404:
         return "Jadval topilmadi — ID yoki havolani tekshiring"
     return str(exc)[:300]
+
+
+# ===========================================================================
+# User data deletion (SPEC §12.2): blank the rows of deleted entries
+# ===========================================================================
+DELETED_LABEL = "O'chirildi"
+_ERASE_ATTEMPTS = 3
+
+
+def _transient(exc: SheetError) -> bool:
+    return exc.status == 429 or exc.status >= 500 or exc.status == 0
+
+
+async def erase_rows(entry_ids: list[str]) -> dict:
+    """Blank every cell (ID included) of the rows holding these entries and put
+    "O'chirildi" in the source column, so the sheet keeps no personal data of a
+    person whose data was deleted. The entries are already gone from the DB, so
+    there is no outbox: transient Google errors are retried here with backoff and
+    a final failure is reported to the caller (staff are alerted to do it by hand).
+
+    Returns {"configured": bool, "erased": int, "error": str | None}.
+    """
+    account = _account()
+    sheet = spreadsheet_id(settings.GSHEET_SPREADSHEET_ID)
+    if not account or not sheet or not entry_ids:
+        return {"configured": bool(account and sheet), "erased": 0, "error": None}
+    wanted = {str(i) for i in entry_ids}
+    last_error: Optional[SheetError] = None
+    for attempt in range(_ERASE_ATTEMPTS):
+        erased = 0
+        try:
+            async with httpx.AsyncClient(timeout=20.0, transport=_transport) as http:
+                index = await _row_index(http, account, sheet)
+                size, last = _width(sheet)
+                for entry_id in sorted(wanted):
+                    number = index.get(entry_id)
+                    if number is None:
+                        continue
+                    blank = [""] * size
+                    blank[ord(_SOURCE_COLUMN) - ord("A")] = DELETED_LABEL
+                    await _call(http, account, "PUT",
+                                _values_url(sheet, f"A{number}:{last}{number}"),
+                                params={"valueInputOption": "RAW"}, json={"values": [blank]})
+                    erased += 1
+            logger.info("Sheets: {} row(s) erased after a data deletion request", erased)
+            return {"configured": True, "erased": erased, "error": None}
+        except SheetError as exc:
+            last_error = exc
+            if not _transient(exc) or attempt == _ERASE_ATTEMPTS - 1:
+                break
+            await asyncio.sleep(2 ** attempt)
+    logger.warning("Sheets: rows of deleted entries not erased ({}): {}",
+                   last_error.status if last_error else "?", last_error)
+    return {"configured": True, "erased": 0, "error": str(last_error)[:200]}

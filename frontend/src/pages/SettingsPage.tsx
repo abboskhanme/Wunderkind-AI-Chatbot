@@ -78,6 +78,46 @@ function InstagramExtras({ status }: { status: AgentStatus }) {
       </div>
       <CopyRow label="Webhook manzili (Meta App → Instagram → Webhooks: comments, messages)" value={status.webhooks.instagram ?? ''} />
       <CopyRow label="OAuth redirect URI (Meta App → Instagram → Business login settings)" value={status.public_url ? `${status.public_url}/connect/callback` : ''} />
+      <MetaReviewUrls status={status} />
+    </div>
+  )
+}
+
+/** URLs Meta requires before App Review / Live mode (SPEC §12.4). */
+function MetaReviewUrls({ status }: { status: AgentStatus }) {
+  const urls = status.legal_urls
+  return (
+    <div className="space-y-3 border-t border-pink-100 pt-4">
+      <div>
+        <p className="text-sm font-medium text-gray-900">Meta App Review uchun manzillar</p>
+        <p className="text-xs text-gray-500">
+          Sahifalardagi aloqa ma'lumotlari pastdagi «Yuridik ma'lumotlar» bo'limidan olinadi.
+        </p>
+      </div>
+      <CopyRow label="Privacy Policy URL (Meta App → App settings → Basic)" value={urls.privacy ?? ''} />
+      <CopyRow label="Terms of Service URL (Meta App → App settings → Basic)" value={urls.terms ?? ''} />
+      <CopyRow
+        label="User data deletion — callback URL (App settings → Basic va Instagram → Business login settings → Data deletion request URL)"
+        value={urls.data_deletion_callback ?? ''}
+      />
+      <CopyRow label="Deauthorize callback URL (Instagram → Business login settings)" value={urls.deauthorize ?? ''} />
+      {urls.data_deletion_page && (
+        <p className="text-xs text-gray-500">
+          Ochiq sahifalar:{' '}
+          {[
+            ['Maxfiylik siyosati', urls.privacy],
+            ['Foydalanish shartlari', urls.terms],
+            ["Ma'lumotlarni o'chirish", urls.data_deletion_page],
+          ].map(([label, href], i) => (
+            <span key={label}>
+              {i > 0 && ' · '}
+              <a href={href ?? '#'} target="_blank" rel="noreferrer" className="font-medium text-brand-600 hover:text-brand-700">
+                {label}
+              </a>
+            </span>
+          ))}
+        </p>
+      )}
     </div>
   )
 }

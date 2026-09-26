@@ -94,6 +94,11 @@ class _MemoryStore:
             return None
         return value
 
+    async def forget(self, user_id: str) -> None:
+        """Drop the cached conversation and pause flag (user data deletion)."""
+        self._history.pop(user_id, None)
+        self._paused.pop(user_id, None)
+
     async def is_paused(self, user_id: str) -> bool:
         exp = self._paused.get(user_id)
         if not exp:
@@ -150,6 +155,10 @@ class _RedisStore:
 
     async def get_value(self, key: str) -> str | None:
         return await self._r.get(f"kv:{key}")
+
+    async def forget(self, user_id: str) -> None:
+        """Drop the cached conversation and pause flag (user data deletion)."""
+        await self._r.delete(f"hist:{user_id}", f"pause:{user_id}")
 
     async def is_paused(self, user_id: str) -> bool:
         return bool(await self._r.get(f"pause:{user_id}"))

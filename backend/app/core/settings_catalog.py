@@ -30,6 +30,8 @@ GROUPS: dict[str, str] = {
     "telegram": "Telegram",
     "sales": "Sotuv sozlamalari",
     "general": "Umumiy",
+    # Public legal pages for Meta App Review (SPEC §12.3)
+    "legal": "Yuridik ma'lumotlar",
     # Shown on the "Voronka" page, not in Sozlamalar (SPEC §10.3)
     "funnel": "Lead-magnet voronkasi",
     "gsheet": "Google Sheets",
@@ -169,6 +171,22 @@ CATALOG: tuple[SettingItem, ...] = (
     # --- General --------------------------------------------------------------
     SettingItem("COMPANY_NAME", "Maktab nomi", "general", placeholder="Wunderkind"),
     SettingItem("TIMEZONE", "Vaqt mintaqasi", "general", placeholder="Asia/Tashkent"),
+
+    # --- Legal pages: /privacy, /terms, /data-deletion (SPEC §12.3) ------------
+    SettingItem("LEGAL_ENTITY_NAME", "Tashkilotning rasmiy nomi", "legal",
+                placeholder="«…» xususiy maktabi MChJ",
+                help="Maxfiylik siyosati va foydalanish shartlarida ko'rsatiladi. Bo'sh bo'lsa "
+                     "maktab nomi ishlatiladi."),
+    SettingItem("LEGAL_CONTACT_EMAIL", "Aloqa uchun e-mail", "legal",
+                placeholder="info@example.uz",
+                help="Ma'lumotlarni o'chirish so'rovlari shu manzilga yoziladi. Meta ham "
+                     "shuni talab qiladi."),
+    SettingItem("LEGAL_CONTACT_PHONE", "Aloqa telefoni", "legal",
+                placeholder="+998 71 123 45 67",
+                help="Bo'sh bo'lsa voronkadagi mas'ul xodim telefoni ko'rsatiladi."),
+    SettingItem("LEGAL_ADDRESS", "Yuridik / pochta manzili", "legal", type="textarea",
+                placeholder="Toshkent sh., … tumani, … ko'chasi, …-uy",
+                help="Bo'sh bo'lsa voronkadagi manzil ko'rsatiladi."),
 
     # --- Lead-magnet funnel (SPEC §10) ------------------------------------------
     SettingItem("FUNNEL_ENABLED", "Voronka yoqilgan", "funnel", type="select",

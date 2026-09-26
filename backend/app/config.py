@@ -182,6 +182,13 @@ class Settings(BaseSettings):
         "Kela olmasangiz, iltimos, vaqtni o'zgartiring yoki bekor qiling. Kutib qolamiz! 😊"
     )
 
+    # --- Legal details on /privacy, /terms, /data-deletion (SPEC §12.3) -----
+    # Empty -> fallbacks: COMPANY_NAME, FUNNEL_STAFF_PHONE, FUNNEL_ADDRESS
+    LEGAL_ENTITY_NAME: str = ""
+    LEGAL_CONTACT_EMAIL: str = ""
+    LEGAL_CONTACT_PHONE: str = ""
+    LEGAL_ADDRESS: str = ""
+
     # --- Google Sheets (funnel entries until the CRM exists) ---------------
     GSHEET_SERVICE_ACCOUNT_JSON: str = ""
     GSHEET_SPREADSHEET_ID: str = ""

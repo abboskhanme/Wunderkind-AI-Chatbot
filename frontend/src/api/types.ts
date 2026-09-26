@@ -51,6 +51,14 @@ export interface AgentStatus {
   notifications_ready: boolean
   public_url: string | null
   webhooks: { instagram: string | null; telegram: string | null }
+  /** Public URLs for the Meta App Dashboard (SPEC §12.4); null without PUBLIC_URL */
+  legal_urls: {
+    privacy: string | null
+    terms: string | null
+    data_deletion_page: string | null
+    data_deletion_callback: string | null
+    deauthorize: string | null
+  }
   telegram_webhook: {
     state: 'not_configured' | 'no_public_url' | 'polling' | 'ok' | 'wrong_url' | 'error'
     error: string | null
