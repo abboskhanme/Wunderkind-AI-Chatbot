@@ -16,6 +16,7 @@ from loguru import logger
 from app.config import settings
 from app.funnel import instagram_gate as funnel_instagram
 from app.instagram.models import IncomingEvent, parse_webhook
+from app.leads import profiles
 from app.processing.pipeline import process_event
 
 router = APIRouter(prefix="/webhook", tags=["Instagram webhook"])
@@ -74,6 +75,9 @@ async def receive(
     )
     for event in events:
         background.add_task(_route, event)
+    # Account profiles after every reply of the batch (tasks run in order)
+    for event in events:
+        background.add_task(profiles.capture_instagram, event)
 
     # Meta'га darhol 200
     return Response(content="EVENT_RECEIVED", media_type="text/plain")

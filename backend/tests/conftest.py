@@ -70,6 +70,22 @@ def fresh_state(monkeypatch):
     yield store_mod.store
 
 
+@pytest.fixture(autouse=True)
+def no_profile_network(monkeypatch):
+    """Account profile reads (SPEC §13) run after every update — never over the
+    network in tests. Tests that need data patch these again."""
+    from app.instagram.client import instagram
+    from app.telegram_business.client import telegram
+
+    async def _none(*_args, **_kwargs):
+        return None
+
+    monkeypatch.setattr(telegram, "get_chat", _none)
+    monkeypatch.setattr(telegram, "get_user_profile_photos", _none)
+    monkeypatch.setattr(telegram, "download_file", _none)
+    monkeypatch.setattr(instagram, "get_full_profile", _none)
+
+
 @pytest.fixture
 def client(database):
     from fastapi.testclient import TestClient

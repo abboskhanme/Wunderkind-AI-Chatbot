@@ -26,6 +26,7 @@ from app.db.base import utcnow
 from app.models.funnel import FunnelDelivery, FunnelEntry, InterviewBooking
 from app.models.lead import Lead, LeadMessage
 from app.models.legal import CONFIRMATION_CODE_LENGTH, DataDeletionRequest
+from app.models.profile import CustomerProfile
 
 # Settings the Instagram "Ulash" flow fills in; cleared on disconnect
 IG_IDENTITY_KEYS = ("IG_ACCESS_TOKEN", "IG_USER_ID", "IG_ACCOUNT_ID", "IG_USERNAME",
@@ -79,7 +80,7 @@ async def mark_completed(db: AsyncSession, row: DataDeletionRequest) -> None:
 async def delete_instagram_user(db: AsyncSession, ig_user_id: str) -> DeletionResult:
     """Delete everything we hold about one Instagram user and commit.
 
-    Removed: their Instagram leads (+ messages), the funnel entries with this
+    Removed: their Instagram leads (+ messages), account profiles, the funnel entries with this
     Instagram id (+ deliveries and interview bookings), and — because our funnel
     linked this Instagram user to a Telegram user — that same person's Telegram
     leads and funnel entries. Other people's rows only lose a dangling reference
@@ -125,6 +126,12 @@ async def delete_instagram_user(db: AsyncSession, ig_user_id: str) -> DeletionRe
         await db.execute(delete(FunnelEntry).where(FunnelEntry.id.in_(entry_ids)))
     if lead_ids:
         await db.execute(delete(Lead).where(Lead.id.in_(lead_ids)))
+    profile_filter = ((CustomerProfile.channel == "instagram")
+                      & (CustomerProfile.external_id == ig_user_id))
+    if tg_ids:
+        profile_filter = or_(profile_filter, (CustomerProfile.channel == "telegram")
+                             & CustomerProfile.external_id.in_(tg_ids))
+    await db.execute(delete(CustomerProfile).where(profile_filter))
     await db.commit()
 
     result.leads = len(lead_ids)

@@ -36,6 +36,11 @@ async def _throttle() -> None:
         _last_call = time.monotonic()
 
 
+# Instagram User Profile API (consent = the person messaged us first)
+PROFILE_FIELDS_BASIC = ("name,username,profile_pic,follower_count,is_user_follow_business,"
+                        "is_business_follow_user")
+PROFILE_FIELDS = f"{PROFILE_FIELDS_BASIC},is_verified_user"
+
 # Instagram javob oynasi yopilganini bildiruvchi xatolar (Meta kodlari)
 _WINDOW_ERROR_CODES = {10, 551, 200}
 _WINDOW_HINTS = ("outside of allowed window", "outside the allowed window",
@@ -101,15 +106,19 @@ class InstagramClient:
         logger.error("IG API 3 urinishdan keyin ham muvaffaqiyatsiz: {}", path)
         return {}
 
-    async def _get(self, path: str, *, params=None) -> dict:
-        """GET so'rov (throttle + backoff bilan). Xatoda bo'sh dict."""
+    async def _get(self, path: str, *, params=None, retries: int = 3,
+                   timeout: float = 20.0) -> dict:
+        """GET so'rov (throttle + backoff bilan). Xatoda bo'sh dict.
+
+        `retries`/`timeout` — optional reads (profile) use a short budget so they
+        never hold the shared throttle long."""
         params = {**(params or {}), "access_token": settings.IG_ACCESS_TOKEN}
         url = path if path.startswith("http") else f"{self._base}/{path}"
         delay = 1.0
-        for attempt in range(3):
+        for attempt in range(retries):
             await _throttle()
             try:
-                async with httpx.AsyncClient(timeout=20.0) as client:
+                async with httpx.AsyncClient(timeout=timeout) as client:
                     resp = await client.get(url, params=params)
                 if resp.status_code == 200:
                     return resp.json()
@@ -122,16 +131,18 @@ class InstagramClient:
                         "IG API GET {} ({}-urinish), backoff {}s: {}",
                         resp.status_code, attempt + 1, delay, resp.text[:200],
                     )
-                    await asyncio.sleep(delay)
-                    delay *= 2
+                    if attempt + 1 < retries:
+                        await asyncio.sleep(delay)
+                        delay *= 2
                     continue
                 logger.error("IG API GET xato {}: {}", resp.status_code, resp.text[:300])
                 return {}
             except httpx.HTTPError as exc:
                 logger.warning("IG API GET ulanish xatosi ({}): {}", attempt + 1, exc)
-                await asyncio.sleep(delay)
-                delay *= 2
-        logger.error("IG API GET 3 urinishdan keyin ham muvaffaqiyatsiz: {}", path)
+                if attempt + 1 < retries:
+                    await asyncio.sleep(delay)
+                    delay *= 2
+        logger.error("IG API GET {} urinishdan keyin ham muvaffaqiyatsiz: {}", retries, path)
         return {}
 
     async def list_conversations(self, after: str | None = None) -> dict:
@@ -264,6 +275,19 @@ class InstagramClient:
         (no consent yet, permission missing, API error)."""
         data = await self._get(igsid, params={"fields": "username,is_user_follow_business"})
         return data or None
+
+    async def get_full_profile(self, igsid: str) -> dict | None:
+        """Everything the User Profile API gives about a person who messaged us
+        (name, username, profile_pic, follower_count, follow/verified flags).
+        None when unavailable (no consent yet, permission missing, API error).
+
+        One field the API version refuses fails the whole read, so a failed
+        read is retried once with the fields of Meta's documented example."""
+        for fields in (PROFILE_FIELDS, PROFILE_FIELDS_BASIC):
+            data = await self._get(igsid, params={"fields": fields}, retries=1, timeout=5.0)
+            if data:
+                return data
+        return None
 
     async def get_media(self, media_id: str) -> dict | None:
         """{shortcode, permalink} of a post — funnels may filter posts by link."""

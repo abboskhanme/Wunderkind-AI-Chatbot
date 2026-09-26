@@ -64,6 +64,19 @@ Mijoz tugmani bossa, AI'siz tayyor matn va rasmlar yuboriladi.
 - Instagramda javob oynasi cheklangan: mijozning oxirgi xabaridan 24 soat erkin,
   7 kungacha faqat operator javobi, keyin yopiq — telefon orqali bog'laning.
 - O'ng tomonda lead kartasi: holat, ism, telefon, qiziqish, izoh.
+- Kartaning yuqorisida **Akkaunt** bloki — mijoz yozishi bilan avtomatik to'ladi:
+  - **Telegram:** profil rasmi, ism-familiya, @username, til, Premium, bio,
+    tug'ilgan kun (ochiq bo'lsa), shaxsiy kanal. **Telefon** — faqat mijoz
+    «kontakt yuborish» orqali o'z raqamini yuborsa (Telegram raqamni o'zi bermaydi).
+  - **Instagram:** profil rasmi, profildagi ism, @username, obunachilar soni,
+    bizga obunami. Instagram telefon raqamni umuman bermaydi — raqam faqat
+    suhbatdan olinadi (AI yoki siz yozasiz).
+  - ⟳ tugmasi profilni hozir qayta o'qiydi (eski suhbatlar uchun qulay).
+  - Instagram profilni faqat mijoz bizga **Direct** yozgandan keyin beradi; faqat
+    izoh qoldirganlarda @username bo'ladi, xolos.
+- «Ismi» maydoniga akkaunt nomi yozilmaydi — u mijozning haqiqiy ismi uchun
+  (AI suhbatdan oladi). Ism bo'sh bo'lsa ro'yxatda akkaunt nomi ko'rinadi. Qidiruv
+  akkaunt nomi bo'yicha ham ishlaydi.
 
 ### Leadlar
 Holatlar: **Yangi → Bog'lanildi → Suhbatga yozildi → Qabul qilindi / Yo'qotildi.**

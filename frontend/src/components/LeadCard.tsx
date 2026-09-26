@@ -6,6 +6,7 @@ import { leadsApi } from '@/api/leads'
 import { errorMessage } from '@/api/client'
 import type { LeadDetail, LeadPatch, LeadStatus } from '@/api/types'
 import { Button, Input, Label, Select, Textarea } from './ui'
+import { AccountCard } from './AccountCard'
 import { ScoreBadge } from './LeadBadges'
 import { SOURCE_LABELS, STAGE_LABELS, STATUS_LABELS, STATUSES } from '@/lib/labels'
 import { fmtDateTime } from '@/lib/format'
@@ -56,11 +57,19 @@ export function LeadCard({ lead }: { lead: LeadDetail }) {
     setBase(toForm(lead))
   }, [lead.id]) // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Server copy changed (new message, AI filled a field): adopt it only when the
-  // operator has no unsaved edits — polling must not wipe what they are typing.
+  // Server copy changed (new message, AI or the account profile filled a field):
+  // adopt it field by field, only where the operator has no unsaved edit —
+  // polling must not wipe what they are typing, and saving an edited note must
+  // not send the stale empty phone back (that would erase the new one).
   useEffect(() => {
     const next = toForm(lead)
-    setForm((cur) => ((Object.keys(cur) as (keyof Form)[]).every((k) => cur[k] === base[k]) ? next : cur))
+    setForm((cur) => {
+      const merged = { ...cur }
+      for (const k of Object.keys(cur) as (keyof Form)[]) {
+        if (cur[k] === base[k]) (merged as Record<keyof Form, string>)[k] = next[k]
+      }
+      return merged
+    })
     setBase(next)
   }, [lead.updated_at]) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -96,6 +105,8 @@ export function LeadCard({ lead }: { lead: LeadDetail }) {
         {lead.language && <span className="rounded-full bg-gray-100 px-2 py-0.5">{lead.language}</span>}
         <span className="rounded-full bg-gray-100 px-2 py-0.5">{SOURCE_LABELS[lead.source] ?? lead.source}</span>
       </div>
+
+      <AccountCard lead={lead} />
 
       {lead.summary && (
         <div className="rounded-lg bg-brand-50/60 p-3 text-sm text-gray-700 ring-1 ring-brand-100">

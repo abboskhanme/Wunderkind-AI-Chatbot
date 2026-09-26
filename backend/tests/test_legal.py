@@ -17,6 +17,7 @@ from app.instagram.signed_request import (
 from app.models.funnel import FunnelDelivery, FunnelEntry, FunnelMessage, InterviewBooking
 from app.models.lead import Lead, LeadMessage
 from app.models.legal import DataDeletionRequest
+from app.models.profile import CustomerProfile
 from app.models.setting import Setting
 from tests.conftest import auth_headers, make_user
 from tests.funnel_fakes import db_add, db_all, fake_tg, run, utc  # noqa: F401  (fixtures)
@@ -181,6 +182,23 @@ def test_repeated_deletion_is_harmless(client, app_secret, database, fake_tg):
     assert first.json()["confirmation_code"] != second.json()["confirmation_code"]
     assert {r.status for r in db_all(database, DataDeletionRequest)} == {"completed"}
     assert {lead.external_id for lead in db_all(database, Lead)} == {"ig-other", "777"}
+
+
+def test_deletion_removes_account_profiles(client, app_secret, database, fake_tg):
+    """SPEC §13: the account profile (name, username, phone, photo link) goes too —
+    the Instagram one and the Telegram one the funnel linked to it."""
+    _seed_people(database)
+    db_add(database,
+           CustomerProfile(channel="instagram", external_id="ig-user-1", full_name="Malika",
+                           details={}),
+           CustomerProfile(channel="telegram", external_id="555", phone="+998901112233",
+                           details={}),
+           CustomerProfile(channel="telegram", external_id="777", full_name="Boshqa",
+                           details={}))
+    r = client.post("/connect/data-deletion", data={"signed_request": signed("ig-user-1")})
+    assert r.status_code == 200, r.text
+    assert [(p.channel, p.external_id) for p in db_all(database, CustomerProfile)] == \
+        [("telegram", "777")]
 
 
 def test_deletion_clears_the_conversation_cache(client, app_secret, fresh_state):

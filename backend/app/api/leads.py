@@ -13,11 +13,13 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import DB, CurrentUser, get_current_user, require_admin
+from app.leads import profiles
 from app.models.lead import CHANNELS, STATUS_LABELS, Lead, LeadMessage
+from app.models.profile import CustomerProfile
 from app.models.user import User
 from app.schemas.api import (
     BotToggleIn, InboxItem, LeadDetail, LeadList, LeadOut, LeadUpdate, MessageOut,
-    ReplyOut, TextIn,
+    ProfileOut, ReplyOut, TextIn,
 )
 from app.services import channels
 
@@ -57,11 +59,21 @@ async def _counts(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, int
     return {r[0]: r[1] for r in rows}
 
 
-def _out(lead: Lead, names: dict, counts: dict) -> LeadOut:
+def _out(lead: Lead, names: dict, counts: dict, accounts: Optional[dict] = None) -> LeadOut:
     out = LeadOut.model_validate(lead)
     out.assigned_to_name = names.get(lead.assigned_to_id)
     out.message_count = counts.get(lead.id, 0)
+    out.profile_name = (accounts or {}).get((lead.channel, lead.external_id))
     return out
+
+
+def _profile_match(like: str):
+    """The lead's account profile matches the search (account name, shared phone)."""
+    return select(CustomerProfile.id).where(
+        CustomerProfile.channel == Lead.channel,
+        CustomerProfile.external_id == Lead.external_id,
+        or_(CustomerProfile.full_name.ilike(like), CustomerProfile.phone.ilike(like)),
+    ).exists()
 
 
 def _filtered(status: Optional[str], channel: Optional[str], search: Optional[str],
@@ -74,7 +86,8 @@ def _filtered(status: Optional[str], channel: Optional[str], search: Optional[st
     if search:
         like = f"%{search.strip()}%"
         q = q.where(or_(Lead.username.ilike(like), Lead.name.ilike(like),
-                        Lead.contact.ilike(like), Lead.course_interest.ilike(like)))
+                        Lead.contact.ilike(like), Lead.course_interest.ilike(like),
+                        _profile_match(like)))
     if min_score is not None:
         q = q.where(Lead.lead_score >= min_score)
     if has_contact is True:
@@ -100,7 +113,8 @@ async def list_leads(
     )).scalars().all()
     names = await _names(db, [l.assigned_to_id for l in leads])
     counts = await _counts(db, [l.id for l in leads])
-    return LeadList(items=[_out(l, names, counts) for l in leads], total=total)
+    accounts = await profiles.names(db, list(leads))
+    return LeadList(items=[_out(l, names, counts, accounts) for l in leads], total=total)
 
 
 @router.get("/export.csv")
@@ -114,22 +128,34 @@ async def export_csv(
         _filtered(status, channel, search, min_score, has_contact)
         .order_by(Lead.created_at.desc()).limit(10000)
     )).scalars().all()
+    accounts = await profiles.names(db, list(leads))
     buf = io.StringIO()
     writer = csv.writer(buf)
-    writer.writerow(["Sana", "Kanal", "Username", "Ism", "Telefon", "Qiziqish", "Yosh/sinf",
-                     "Qulay vaqt", "Holat", "Ball", "Xulosa", "Izoh"])
+    writer.writerow(["Sana", "Kanal", "Username", "Ism", "Akkaunt nomi", "Telefon", "Qiziqish",
+                     "Yosh/sinf", "Qulay vaqt", "Holat", "Ball", "Xulosa", "Izoh"])
     for l in leads:
-        writer.writerow([
+        writer.writerow([_cell(v) for v in (
             _local(l.created_at), l.channel,
-            l.username or "", l.name or "", l.contact or "", l.course_interest or "",
+            l.username or "", l.name or "", accounts.get((l.channel, l.external_id), ""),
+            l.contact or "", l.course_interest or "",
             l.student_age or "", l.preferred_time or "", STATUS_LABELS.get(l.status, l.status),
             l.lead_score, l.summary or "", l.note or "",
-        ])
+        )])
     # BOM so Excel opens UTF-8 (Cyrillic) correctly
     return Response(
         content="﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="leads.csv"'},
     )
+
+
+def _cell(value: object) -> object:
+    """Customer-typed text (account names, messages) must not become an Excel
+    formula: "=HYPERLINK(...)" is written as text. A phone's "+" is data."""
+    if not isinstance(value, str) or not value:
+        return value
+    if value[0] in ("=", "-", "@", "\t", "\r") or (value[0] == "+" and not value[1:].isdigit()):
+        return "'" + value
+    return value
 
 
 def _local(dt: Optional[datetime]) -> str:
@@ -178,7 +204,7 @@ async def inbox(
     if search:
         like = f"%{search.strip()}%"
         q = q.where(or_(Lead.username.ilike(like), Lead.name.ilike(like),
-                        Lead.contact.ilike(like)))
+                        Lead.contact.ilike(like), _profile_match(like)))
     if only_unread:
         q = q.where(agg.c.unread > 0)
     rows = (await db.execute(
@@ -202,12 +228,14 @@ async def inbox(
         for m in msgs:
             last.setdefault(m.lead_id, m)
 
+    accounts = await profiles.names(db, [r[0] for r in rows])
     items = []
     for lead, unread_count in rows:
         m = last.get(lead.id)
         items.append(InboxItem(
             lead_id=lead.id, channel=lead.channel, username=lead.username,
-            name=lead.name, contact=lead.contact, status=lead.status,
+            name=lead.name, profile_name=accounts.get((lead.channel, lead.external_id)),
+            contact=lead.contact, status=lead.status,
             lead_score=lead.lead_score or 0, stage=lead.stage,
             last_message=m.text if m else None,
             last_message_role=m.role if m else None,
@@ -226,11 +254,42 @@ async def get_lead(lead_id: uuid.UUID, db: DB):
         .order_by(LeadMessage.created_at)
     )).scalars().all()
     names = await _names(db, [lead.assigned_to_id])
+    profile = await profiles.get(db, lead.channel, lead.external_id)
+    out = _out(lead, names, {lead.id: sum(m.kind in _CHAT_KINDS for m in msgs)})
+    out.profile_name = profile.full_name if profile else None
     detail = LeadDetail.model_validate({
-        **_out(lead, names, {lead.id: sum(m.kind in _CHAT_KINDS for m in msgs)}).model_dump(),
+        **out.model_dump(),
         "messages": [MessageOut.model_validate(m) for m in msgs],
+        "profile": _profile_out(profile),
     })
     return detail
+
+
+def _profile_out(profile: Optional[CustomerProfile]) -> Optional[ProfileOut]:
+    if profile is None:
+        return None
+    out = ProfileOut.model_validate(profile)
+    # The photo is served by /avatar; the CDN link itself expires anyway
+    out.details = {k: v for k, v in (profile.details or {}).items() if k != "profile_pic"}
+    return out
+
+
+@router.post("/{lead_id}/profile/refresh", response_model=Optional[ProfileOut])
+async def refresh_profile(lead_id: uuid.UUID, db: DB):
+    """Re-read the account profile from Telegram / Instagram now."""
+    lead = await _get(db, lead_id)
+    return _profile_out(await profiles.refresh(lead.channel, lead.external_id))
+
+
+@router.get("/{lead_id}/avatar")
+async def avatar(lead_id: uuid.UUID, db: DB):
+    lead = await _get(db, lead_id)
+    image = await profiles.avatar(lead.channel, lead.external_id)
+    if image is None:
+        raise HTTPException(404, "Rasm yo'q")
+    content, media_type = image
+    return Response(content=content, media_type=media_type,
+                    headers={"Cache-Control": "private, max-age=3600"})
 
 
 @router.patch("/{lead_id}", response_model=LeadOut)

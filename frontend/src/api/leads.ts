@@ -1,6 +1,7 @@
 import { api } from './client'
 import type {
-  Assignee, InboxItem, LeadDetail, LeadList, LeadOut, LeadPatch, Message, ReplyResult,
+  Assignee, CustomerProfile, InboxItem, LeadDetail, LeadList, LeadOut, LeadPatch, Message,
+  ReplyResult,
 } from './types'
 
 export interface LeadFilters {
@@ -48,6 +49,10 @@ export const leadsApi = {
   addNote: (id: string, text: string) =>
     api.post<Message>(`/leads/${id}/notes`, { text }).then((r) => r.data),
   assignees: () => api.get<Assignee[]>('/leads/assignees').then((r) => r.data),
+  refreshProfile: (id: string) =>
+    api.post<CustomerProfile | null>(`/leads/${id}/profile/refresh`).then((r) => r.data),
+  avatarBlob: (id: string) =>
+    api.get<Blob>(`/leads/${id}/avatar`, { responseType: 'blob' }).then((r) => r.data),
   exportUrl: (f: LeadFilters) => {
     const qs = new URLSearchParams(
       Object.entries(cleanParams({ ...f, page: undefined, page_size: undefined })).map(

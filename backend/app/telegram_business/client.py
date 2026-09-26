@@ -266,6 +266,31 @@ class TelegramClient:
         ok, data = await self._call("getChat", {"chat_id": chat_id})
         return data if ok else None
 
+    async def get_user_profile_photos(self, user_id: str | int, limit: int = 1) -> dict | None:
+        """UserProfilePhotos ({total_count, photos: [[PhotoSize...]]}) or None."""
+        ok, data = await self._call("getUserProfilePhotos",
+                                    {"user_id": int(user_id), "limit": limit})
+        return data if ok else None
+
+    async def download_file(self, file_id: str, max_bytes: int = 5_000_000) -> bytes | None:
+        """File bytes by `file_id` (getFile + the file endpoint). None on failure.
+        Downloaded server-side so the bot token never reaches the browser."""
+        ok, data = await self._call("getFile", {"file_id": file_id})
+        path = data.get("file_path") if ok else None
+        if not path or int(data.get("file_size") or 0) > max_bytes:
+            return None
+        url = f"{settings.TG_API_BASE.rstrip('/')}/file/bot{settings.TG_SALES_BOT_TOKEN}/{path}"
+        try:
+            async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
+                resp = await client.get(url)
+        except httpx.HTTPError as exc:
+            # Class name only: the URL (and so the message) contains the bot token
+            logger.warning("Telegram file download failed: {}", type(exc).__name__)
+            return None
+        if resp.status_code != 200 or len(resp.content) > max_bytes:
+            return None
+        return resp.content
+
     async def get_me(self) -> dict:
         ok, data = await self._call("getMe", {})
         return data if ok else {}

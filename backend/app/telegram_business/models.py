@@ -23,7 +23,7 @@ _ATTACHMENT_LABELS: tuple[tuple[str, str], ...] = (
 )
 
 
-def message_text(msg: dict[str, Any]) -> tuple[str, bool]:
+def message_text(msg: dict[str, Any], *, from_owner: bool = False) -> tuple[str, bool]:
     """Xabar matni va matnsiz (media) ekanligi.
 
     Matn yoki caption bo'lsa — o'sha; aks holda "[Mijoz rasm yubordi]" kabi
@@ -32,6 +32,16 @@ def message_text(msg: dict[str, Any]) -> tuple[str, bool]:
     text = (msg.get("text") or msg.get("caption") or "").strip()
     if text:
         return text, bool(msg.get("caption"))
+
+    # A shared contact is readable: keep the number in the text, so the log
+    # fills the lead's phone and the AI knows it was received. A card our staff
+    # sent (Business chat) is labelled as theirs — it is not the customer's phone.
+    contact = msg.get("contact") or {}
+    digits = "".join(ch for ch in str(contact.get("phone_number") or "") if ch.isdigit())
+    if digits:
+        name = " ".join(filter(None, (contact.get("first_name"), contact.get("last_name"))))
+        who = "Xodim" if from_owner else "Mijoz"
+        return f"[{who} kontakt yubordi: {name + ', ' if name else ''}+{digits}]", False
 
     names: list[str] = []
     for key, label in _ATTACHMENT_LABELS:
@@ -57,10 +67,6 @@ def event_from_message(
     if frm.get("is_bot"):
         return None
 
-    text, has_attachment = message_text(msg)
-    if not text:
-        return None
-
     chat_id = str(chat.get("id") or "")
     from_id = str(frm.get("id") or "")
     conn_id = msg.get("business_connection_id")
@@ -74,6 +80,9 @@ def event_from_message(
         (owner_id and str(owner_id) == from_id)
         or (conn_id and (msg.get("sender_business_bot") or (from_id and from_id != chat_id)))
     )
+    text, has_attachment = message_text(msg, from_owner=is_owner)
+    if not text:
+        return None
     kind = "echo" if is_owner else "dm"
     # echo'да "suhbatdosh" — mijoz, ya'ni chat egasi
     sender_id = chat_id if is_owner else from_id

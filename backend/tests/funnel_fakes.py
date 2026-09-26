@@ -75,7 +75,10 @@ def fake_tg(monkeypatch):
         return None if rec.member_status is None else {"status": rec.member_status}
 
     async def get_chat(chat_id):
-        return {"id": chat_id, "username": "wk_channel"}
+        # Channels have negative ids; a private chat (customer profile) -> no extras
+        if str(chat_id).startswith("-"):
+            return {"id": chat_id, "username": "wk_channel"}
+        return None
 
     async def get_me():
         return {"username": "wk_bot"}
@@ -127,11 +130,15 @@ def fake_ig(monkeypatch):
         rec.calls.append(("profile", {"igsid": igsid}))
         return rec.profile
 
+    async def get_full_profile(igsid):
+        return rec.profile       # account profile capture (not recorded)
+
     for name, fn in (("send_message_to", send_message_to),
                      ("send_quick_replies", send_quick_replies),
                      ("send_button_template", send_button_template),
                      ("reply_to_comment", reply_to_comment),
-                     ("get_user_profile", get_user_profile)):
+                     ("get_user_profile", get_user_profile),
+                     ("get_full_profile", get_full_profile)):
         monkeypatch.setattr(instagram, name, fn)
     return rec
 

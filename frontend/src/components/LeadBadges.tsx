@@ -31,6 +31,11 @@ export function ScoreBadge({ score }: { score: number }) {
   return <Badge className={color}>{score >= 70 ? '🔥 ' : ''}{score}</Badge>
 }
 
-export function leadTitle(l: { name: string | null; username: string | null; contact?: string | null }) {
-  return l.name || (l.username ? `@${l.username}` : null) || l.contact || 'Nomsiz mijoz'
+export function leadTitle(l: {
+  name: string | null
+  username: string | null
+  contact?: string | null
+  profile_name?: string | null
+}) {
+  return l.name || l.profile_name || (l.username ? `@${l.username}` : null) || l.contact || 'Nomsiz mijoz'
 }

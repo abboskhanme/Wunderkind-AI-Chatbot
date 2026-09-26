@@ -68,6 +68,18 @@ class MessageOut(ORM):
     created_at: datetime
 
 
+class ProfileOut(ORM):
+    """Account profile from the channel (SPEC §13)."""
+    channel: str
+    external_id: str
+    username: Optional[str] = None
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    details: dict[str, Any] = {}
+    fetched_at: Optional[datetime] = None
+    updated_at: datetime
+
+
 class LeadOut(ORM):
     id: uuid.UUID
     channel: str
@@ -92,10 +104,13 @@ class LeadOut(ORM):
     last_customer_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    # Account name from the channel profile (not the name the AI collected)
+    profile_name: Optional[str] = None
 
 
 class LeadDetail(LeadOut):
     messages: list[MessageOut] = []
+    profile: Optional[ProfileOut] = None
 
 
 class LeadList(BaseModel):
@@ -119,6 +134,7 @@ class InboxItem(BaseModel):
     channel: str
     username: Optional[str] = None
     name: Optional[str] = None
+    profile_name: Optional[str] = None
     contact: Optional[str] = None
     status: str
     lead_score: int = 0

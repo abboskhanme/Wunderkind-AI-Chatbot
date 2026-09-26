@@ -19,6 +19,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import session as db_session
 from app.models.lead import CHANNELS, CLOSED_STATUSES, Lead, LeadMessage
+from app.models.profile import CustomerProfile
 from app.models_ai import LeadPayload
 from app.services.phone import extract_phone
 
@@ -59,6 +60,7 @@ async def open_lead(
             return None
         lead = Lead(channel=channel, external_id=user_id, username=username,
                     source=_source(source, channel), status="new", lead_score=0, extra={})
+        await _from_profile(db, lead)
         try:
             # Savepoint: a concurrent webhook may have just created the same
             # open lead (unique index uq_leads_open_per_person) — reuse it.
@@ -70,6 +72,19 @@ async def open_lead(
     elif username and not lead.username:
         lead.username = username
     return lead
+
+
+async def _from_profile(db: AsyncSession, lead: Lead) -> None:
+    """A new lead starts with what the account profile already knows
+    (Instagram DMs carry no username; a shared Telegram phone)."""
+    profile = (await db.execute(select(CustomerProfile).where(
+        CustomerProfile.channel == lead.channel,
+        CustomerProfile.external_id == lead.external_id,
+    ))).scalar_one_or_none()
+    if profile is None:
+        return
+    lead.username = lead.username or profile.username
+    lead.contact = lead.contact or profile.phone
 
 
 async def push(payload: LeadPayload) -> bool:

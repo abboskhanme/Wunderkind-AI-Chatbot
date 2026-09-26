@@ -25,6 +25,7 @@ from loguru import logger
 
 from app.config import settings
 from app.funnel import bot as funnel_bot
+from app.leads import profiles
 from app.processing.pipeline import process_event
 from app.state.store import store
 from app.telegram_business import menu
@@ -92,6 +93,14 @@ async def handle_update(update: dict, background: BackgroundTasks) -> None:
 
     Shared by the webhook and by local long polling (app.telegram_business.polling).
     """
+    await _route_update(update, background)
+    # Account profile (name, username, shared phone, ...) — after the reply
+    person = profiles.telegram_person(update)
+    if person is not None:
+        background.add_task(profiles.capture_telegram, person)
+
+
+async def _route_update(update: dict, background: BackgroundTasks) -> None:
     # 1) Ulanish o'zgarishi (ulandi/uzildi)
     conn = update.get("business_connection")
     if isinstance(conn, dict):

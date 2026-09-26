@@ -688,3 +688,47 @@ Signature verification (valid/invalid/missing), deletion removes the right lead,
 messages, funnel entries and keeps others, own-account deletion disconnects
 Instagram, confirmation status page shows the code, pages return 200 text/html
 without auth and HTML-escape settings values, new settings validation.
+
+## 13. Customer account profiles (added 2026-09-26)
+
+Staff want the most the channels tell about each customer's account.
+
+### 13.1 What is collected
+| Channel | Source | Data |
+|---|---|---|
+| Telegram | every private update (`from` / `chat`) | first+last name, username, language_code, is_premium |
+| Telegram | shared contact (`contact.user_id` = sender) | phone (verified) |
+| Telegram | `getChat`, max once per 24 h per person | bio, birthdate, personal channel |
+| Telegram | `getUserProfilePhotos` on demand | profile photo (proxied, not stored) |
+| Instagram | comment webhook | username |
+| Instagram | User Profile API — DMs only, max once per 6 h per person, 1 try / 5 s timeout, retried once without `is_verified_user` | name, username, profile_pic (link, expires), follower_count, is_verified_user, is_user_follow_business, is_business_follow_user |
+
+Instagram never exposes phone numbers; the profile API works only after the
+person messaged us (error 230 otherwise). A shared Telegram contact is also
+logged as `[Mijoz kontakt yubordi: <name>, +<phone>]`, so the lead's phone fills
+through the existing extraction and the AI sees it.
+
+### 13.2 Storage
+Table `customer_profiles` (channel, external_id unique; username, full_name,
+phone, details JSON, fetched_at) — per person, not per lead, filled even before a
+lead exists. Leads get `username` (Instagram DMs carry none) and an empty open
+lead's `contact` from the profile; new leads start with both. `Lead.name` is NOT
+filled from the account name — the AI treats `name` as known and would stop
+asking for the real name. Meta data deletion also deletes the profiles.
+
+### 13.3 Capture
+TG `handle_update` and the IG webhook queue `profiles.capture_*` AFTER all reply
+tasks of the update/batch (the IG client's 1 req/s throttle is shared with
+replies; commenters never get an API read — no consent). Best effort, never
+raises, logs no personal data. A fresh API read replaces the API-owned keys (a
+hidden bio/birthdate disappears); other sources only add. A staff-sent contact
+card in a Business chat is logged as `[Xodim kontakt yubordi: ...]`.
+
+### 13.4 API (login required, admin + operator)
+- `GET /api/leads/{id}` → `profile_name`, `profile` (details without the CDN link)
+- `GET /api/leads`, `/api/leads/inbox` → `profile_name`; search also matches the
+  account name and the shared phone; CSV gets «Akkaunt nomi».
+- `POST /api/leads/{id}/profile/refresh` → re-read now; `null` when the channel
+  gave nothing.
+- `GET /api/leads/{id}/avatar` → image bytes (Telegram via bot API server-side;
+  Instagram from Meta CDN hosts only, expired link renewed once), 404 if none.

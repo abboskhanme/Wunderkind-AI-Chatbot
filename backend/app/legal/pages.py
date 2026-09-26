@@ -206,12 +206,14 @@ kimga uzatishini tushuntiradi.</p>
 <p><b>Instagram orqali</b> (postimizga izoh qoldirsangiz yoki bizga Direct xabar yozsangiz):</p>
 <ul>
 <li>Instagram foydalanuvchi identifikatoringiz (Instagram bizning ilovamizga beradigan ID) va foydalanuvchi nomingiz (@username);</li>
+<li>Instagram bizning ilovamizga beradigan profil ma'lumotlari: profildagi ismingiz, profil rasmingiz, obunachilaringiz soni, akkauntingiz tasdiqlanganmi, bizga obunamisiz va biz sizga obunamizmi;</li>
 <li>postlarimizga yozgan izohlaringiz va bizga yuborgan xabarlaringiz matni;</li>
 <li>qo'llanma so'raganingizda — sahifamizga obuna bo'lganmisiz yoki yo'q (ha/yo'q).</li>
 </ul>
 <p><b>Telegram orqali</b> (botimizga yoki yordamchimiz ulangan maktab Telegram akkauntiga yozsangiz):</p>
 <ul>
-<li>Telegram foydalanuvchi ID'ingiz, foydalanuvchi nomingiz va chat ID;</li>
+<li>Telegram foydalanuvchi ID'ingiz, profildagi ism-familiyangiz, foydalanuvchi nomingiz, Telegram tili sozlamangiz, Premium belgisi va chat ID;</li>
+<li>Telegram botlarga ko'rsatadigan profil ma'lumotlari: bio, tug'ilgan kun (agar uni ochiq qilgan bo'lsangiz), shaxsiy kanalingiz, profil rasmingiz;</li>
 <li>bizga yuborgan xabarlaringiz, Telegram kanalimiz muhokama guruhida kalit so'z bilan yozgan izohlaringiz;</li>
 <li>qo'llanma so'raganingizda — Telegram kanalimizga a'zomisiz yoki yo'q (ha/yo'q).</li>
 </ul>
@@ -221,7 +223,8 @@ suhbatiga yozilgan sana va vaqt.</p>
 <p><b>Avtomatik yaratiladigan ma'lumotlar:</b> suhbatning qisqa mazmuni, murojaat bosqichi
 va qiziqish darajasi (ball) — xodimlarimiz kimga birinchi qo'ng'iroq qilishni bilishi uchun.</p>
 <p>Biz yuborgan rasm, ovozli xabar va fayllaringizni yuklab olmaymiz va saqlamaymiz —
-faqat ular yuborilganini qayd etamiz. To'lov ma'lumotlari va parollarni to'plamaymiz.</p>
+faqat ular yuborilganini qayd etamiz. Profil rasmingiz xodimlarimizga Instagram/Telegram'dan
+olib ko'rsatiladi, uning nusxasini saqlamaymiz. To'lov ma'lumotlari va parollarni to'plamaymiz.</p>
 
 <h2>3. Ma'lumotlardan nima uchun foydalanamiz</h2>
 <ul>
@@ -301,12 +304,14 @@ our admissions staff, why we use it and with whom we share it.</p>
 <p><b>Through Instagram</b> (when you comment on our posts or send us a direct message):</p>
 <ul>
 <li>your Instagram-scoped user ID (the ID Instagram gives our app) and your username;</li>
+<li>the profile data Instagram provides to our app: your profile name, profile photo, follower count, whether your account is verified, whether you follow us and whether we follow you;</li>
 <li>the text of the comments you post on our posts and of the messages you send us;</li>
 <li>when you ask for our guide — whether you follow our account (yes/no).</li>
 </ul>
 <p><b>Through Telegram</b> (when you write to our bot or to the school's Telegram account connected to our assistant):</p>
 <ul>
-<li>your Telegram user ID, username and chat ID;</li>
+<li>your Telegram user ID, profile name, username, Telegram language setting, Premium status and chat ID;</li>
+<li>the profile details Telegram shows to bots: bio, birthdate (if you made it visible), personal channel, profile photo;</li>
 <li>the messages you send us, and your comments containing our keyword in our Telegram channel's discussion group;</li>
 <li>when you ask for our guide — whether you are a member of our Telegram channel (yes/no).</li>
 </ul>
@@ -316,7 +321,8 @@ of the admission interview you book.</p>
 <p><b>Generated automatically:</b> a short summary of the conversation, its stage and an
 interest score, so that our staff know whom to call first.</p>
 <p>We do not download or store photos, voice messages or files you send — we only note
-that one was sent. We do not collect payment data or passwords.</p>
+that one was sent. Your profile photo is fetched from Instagram/Telegram to show it to our
+staff; we do not keep a copy. We do not collect payment data or passwords.</p>
 
 <h2>3. How we use it</h2>
 <ul>

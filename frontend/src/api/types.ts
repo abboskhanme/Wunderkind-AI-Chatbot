@@ -126,6 +126,31 @@ export interface LeadOut {
   last_customer_at: string | null
   created_at: string
   updated_at: string
+  /** Account name from the channel profile (not the name the AI collected) */
+  profile_name: string | null
+}
+
+/** Account profile from Telegram / Instagram (SPEC §13) */
+export interface CustomerProfile {
+  channel: Channel
+  external_id: string
+  username: string | null
+  full_name: string | null
+  /** Only a phone the person shared themselves (Telegram contact) */
+  phone: string | null
+  details: {
+    language_code?: string
+    is_premium?: boolean
+    bio?: string
+    birthdate?: string
+    personal_channel?: string
+    followers?: number
+    is_verified?: boolean
+    follows_us?: boolean
+    we_follow?: boolean
+  }
+  fetched_at: string | null
+  updated_at: string
 }
 
 export interface Message {
@@ -139,6 +164,7 @@ export interface Message {
 
 export interface LeadDetail extends LeadOut {
   messages: Message[]
+  profile: CustomerProfile | null
 }
 
 export interface LeadList {
@@ -151,6 +177,7 @@ export interface InboxItem {
   channel: Channel
   username: string | null
   name: string | null
+  profile_name: string | null
   contact: string | null
   status: LeadStatus
   lead_score: number
