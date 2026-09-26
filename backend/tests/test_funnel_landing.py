@@ -21,8 +21,14 @@ def bot(monkeypatch):
     monkeypatch.setattr(agent_status, "telegram_bot_username", username)
 
 
-def test_ig_link_uses_landing_page_when_public(monkeypatch, bot):
+def test_ig_link_goes_straight_to_telegram_by_default(monkeypatch, bot):
     monkeypatch.setattr(settings, "PUBLIC_URL", "https://chatbot.example.uz/")
+    assert asyncio.run(repo.ig_link("abc123")) == "https://t.me/wk_bot?start=abc123"
+
+
+def test_ig_link_uses_landing_page_when_enabled(monkeypatch, bot):
+    monkeypatch.setattr(settings, "PUBLIC_URL", "https://chatbot.example.uz/")
+    monkeypatch.setattr(settings, "FUNNEL_IG_LINK_VIA_PAGE", True)
     assert asyncio.run(repo.ig_link("abcDEF123_-x")) == "https://chatbot.example.uz/go/abcDEF123_-x"
 
 

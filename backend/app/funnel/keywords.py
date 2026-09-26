@@ -76,6 +76,15 @@ def matches(text: str, keywords: list[str] | None = None) -> bool:
     return bool(_matching_keywords(text, keywords))
 
 
+# "Where is the guide / the link does not open" — someone who already got the
+# link asks again (the button may not work for them, e.g. on a computer)
+_LINK_REQUEST = re.compile(r"llanma|havola|link|ssilka|ssylka|pdf|ochilma|ishlama|kelma")
+
+
+def asks_for_link(text: str) -> bool:
+    return bool(_LINK_REQUEST.search(normalize(text).replace("'", "")))
+
+
 def is_keyword_request(text: str, keywords: list[str] | None = None,
                        max_extra_words: int = MAX_EXTRA_WORDS) -> bool:
     """Stricter check for DMs: essentially just the keyword ("Wunderkind",

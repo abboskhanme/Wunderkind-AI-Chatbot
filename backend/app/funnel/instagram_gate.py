@@ -19,6 +19,7 @@ from loguru import logger
 from app.config import settings
 from app.db import session as db_session
 from app.funnel import funnels, locks, repo, texts
+from app.funnel import keywords as kw
 from app.funnel.funnels import FunnelView
 from app.instagram.client import instagram
 from app.instagram.models import IncomingEvent, _attachment_text
@@ -68,6 +69,19 @@ async def _handle(event: IncomingEvent) -> bool:
             await _log_dm(event)
             await _on_waiting_dm(event)
         return True
+    # Got the link but asks for the guide again / says it does not open: the
+    # button did not work for them (e.g. instagram.com shows no buttons) → the
+    # link as plain text
+    if latest is not None and latest.step == "ig_link_sent" and kw.asks_for_link(event.text):
+        async with db_session.SessionLocal() as db:
+            funnel = await funnels.get(db, latest.funnel_id)
+        if funnel is None:
+            return False
+        if await _first_time(event):
+            await _log_dm(event)
+            await _send_link(event.sender_id, {"id": event.sender_id}, latest.start_token,
+                             funnel, style="text")
+        return True
     # DMs are strict: only a (nearly) bare keyword starts a funnel; a real
     # question that mentions it ("Wunderkind'da narxlar qancha?") is for the AI
     if not settings.FUNNEL_ENABLED:
@@ -82,11 +96,11 @@ async def _handle(event: IncomingEvent) -> bool:
             await _log_dm(event)
             await _start_in_dm(event, funnel)
         return True
-    if entry.step == "ig_link_sent":         # asked again — send the link again
+    if entry.step == "ig_link_sent":         # asked again — the link as plain text
         if await _first_time(event):
             await _log_dm(event)
             await _send_link(event.sender_id, {"id": event.sender_id}, entry.start_token,
-                             funnel)
+                             funnel, style="text")
         return True
     return False       # already in Telegram: free questions go to the AI
 
@@ -275,8 +289,12 @@ async def _send_quick(igsid: str, recipient: dict, text: str) -> bool:
     return bool(result.get("sent"))
 
 
-async def _send_link(igsid: str, recipient: dict, token: str, funnel: FunnelView) -> bool:
-    """FUNNEL_IG_LINK_MESSAGE with a web_url button; plain text + URL as fallback."""
+async def _send_link(igsid: str, recipient: dict, token: str, funnel: FunnelView, *,
+                     style: str = "button") -> bool:
+    """FUNNEL_IG_LINK_MESSAGE with a «📘 Qo'llanmani olish» button (web_url to the
+    bot). `style="text"` — the link as plain text instead: sent when the person
+    asks again (the button did not work for them; instagram.com shows no buttons).
+    A rejected button template also falls back to plain text."""
     url = await repo.ig_link(token)
     if not url:
         logger.error("Funnel: Telegram bot username unknown — Instagram link not sent")
@@ -286,23 +304,13 @@ async def _send_link(igsid: str, recipient: dict, token: str, funnel: FunnelView
         return False
     text = funnel.text("FUNNEL_IG_LINK_MESSAGE").strip()
     plain = f"{text}\n\n{url}"
-    if "comment_id" in recipient:
-        # A private reply allows ONE message per comment and nothing more until
-        # the person answers — so it must work everywhere: plain text + link
-        # (instagram.com on a computer shows no buttons at all)
-        await store.mark_sent(igsid, plain)
-        result = await instagram.send_message_to(recipient, {"text": plain})
-        return bool(result.get("sent"))
-    await store.mark_sent(igsid, text)
-    await store.mark_sent(igsid, _TEMPLATE_ECHO)
-    result = await instagram.send_button_template(
-        recipient, text, [{"type": "web_url", "url": url, "title": texts.LINK_BUTTON}])
-    if result.get("sent"):
-        # Buttons exist only in the Instagram mobile app — the plain link follows
-        fallback = texts.IG_LINK_TEXT_FALLBACK.format(url=url)
-        await store.mark_sent(igsid, fallback)
-        await instagram.send_message_to(recipient, {"text": fallback})
-    else:
+    result: dict = {}
+    if style == "button":
+        await store.mark_sent(igsid, text)
+        await store.mark_sent(igsid, _TEMPLATE_ECHO)
+        result = await instagram.send_button_template(
+            recipient, text, [{"type": "web_url", "url": url, "title": texts.LINK_BUTTON}])
+    if not result.get("sent"):
         await store.mark_sent(igsid, plain)
         result = await instagram.send_message_to(recipient, {"text": plain})
     return bool(result.get("sent"))

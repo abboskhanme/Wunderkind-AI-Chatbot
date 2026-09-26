@@ -203,6 +203,11 @@ CATALOG: tuple[SettingItem, ...] = (
                 type="select", options=YES_NO,
                 help="Instagram obunani tekshirishga ruxsat bermasa — baribir havola yuborilsin "
                      "(mijoz yo'qolmasin)."),
+    SettingItem("FUNNEL_IG_LINK_VIA_PAGE", "Instagram: havola oraliq sahifa orqali", "funnel",
+                type="select", options=YES_NO,
+                help="«yo'q» — tugma to'g'ridan-to'g'ri t.me (Telegram) ga olib o'tadi. «ha» — "
+                     "avval sayt sahifasi ochiladi (Telegram'da ochish tugmalari, QR kod). "
+                     "Instagram ichida t.me ochilmay orqaga qaytsa «ha» qiling."),
     SettingItem("FUNNEL_IG_COMMENT_REPLY", "Instagram: izohga ochiq javob", "funnel",
                 type="textarea",
                 help="Variantlarni «|» bilan ajrating — har izohga tasodifiy biri yoziladi "

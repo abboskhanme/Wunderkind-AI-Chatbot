@@ -224,10 +224,11 @@ async def bot_link(payload: str) -> Optional[str]:
 
 
 async def ig_link(payload: str) -> Optional[str]:
-    """Link for Instagram DMs: our `/go/<payload>` page (Instagram's in-app
-    browser blocks t.me → Telegram app), or plain t.me without a public URL."""
+    """Link for Instagram DMs: t.me straight to the bot, or — with
+    FUNNEL_IG_LINK_VIA_PAGE — our `/go/<payload>` page (Instagram's in-app
+    browser may block t.me → Telegram app)."""
     direct = await bot_link(payload)
-    if direct and settings.PUBLIC_URL:
+    if direct and settings.PUBLIC_URL and settings.FUNNEL_IG_LINK_VIA_PAGE:
         return f"{settings.PUBLIC_URL.rstrip('/')}/go/{payload}"
     return direct
 
