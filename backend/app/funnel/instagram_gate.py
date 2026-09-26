@@ -285,12 +285,24 @@ async def _send_link(igsid: str, recipient: dict, token: str, funnel: FunnelView
         await instagram.send_message_to(recipient, {"text": texts.IG_LINK_UNAVAILABLE})
         return False
     text = funnel.text("FUNNEL_IG_LINK_MESSAGE").strip()
+    plain = f"{text}\n\n{url}"
+    if "comment_id" in recipient:
+        # A private reply allows ONE message per comment and nothing more until
+        # the person answers — so it must work everywhere: plain text + link
+        # (instagram.com on a computer shows no buttons at all)
+        await store.mark_sent(igsid, plain)
+        result = await instagram.send_message_to(recipient, {"text": plain})
+        return bool(result.get("sent"))
     await store.mark_sent(igsid, text)
     await store.mark_sent(igsid, _TEMPLATE_ECHO)
     result = await instagram.send_button_template(
         recipient, text, [{"type": "web_url", "url": url, "title": texts.LINK_BUTTON}])
-    if not result.get("sent"):
-        plain = f"{text}\n\n{url}"
+    if result.get("sent"):
+        # Buttons exist only in the Instagram mobile app — the plain link follows
+        fallback = texts.IG_LINK_TEXT_FALLBACK.format(url=url)
+        await store.mark_sent(igsid, fallback)
+        await instagram.send_message_to(recipient, {"text": fallback})
+    else:
         await store.mark_sent(igsid, plain)
         result = await instagram.send_message_to(recipient, {"text": plain})
     return bool(result.get("sent"))

@@ -43,6 +43,10 @@ def test_landing_page_offers_every_route_to_telegram(monkeypatch, bot):
     assert "x-safari-https://chatbot.example.uz/go/abcDEF123_-x" in body
     assert "/start abcDEF123_-x" in body
     assert r.headers["cache-control"] == "no-store"
+    # Computer: Telegram Web + a QR code to open the bot on the phone
+    assert ("https://web.telegram.org/k/#?tgaddr=tg%3A%2F%2Fresolve%3Fdomain%3Dwk_bot"
+            "%26start%3DabcDEF123_-x") in body
+    assert "<svg" in body and 'class="segno"' in body
 
 
 @pytest.mark.parametrize("token", ["a%22%3E%3Cscript%3E", "x" * 41, "a.b"])

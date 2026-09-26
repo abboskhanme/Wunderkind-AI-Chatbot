@@ -73,6 +73,11 @@ def test_follow_true_sends_link_button(database, ig):
     assert template["recipient"] == {"id": "u1"}
     assert template["buttons"] == [{"type": "web_url", "title": texts.LINK_BUTTON,
                                     "url": f"https://t.me/wk_bot?start={token}"}]
+    # instagram.com (computer) shows no buttons — the plain link follows the template
+    follow_up = ig.of("send")[-1]
+    assert follow_up["recipient"] == {"id": "u1"}
+    assert follow_up["message"]["text"] == texts.IG_LINK_TEXT_FALLBACK.format(
+        url=f"https://t.me/wk_bot?start={token}")
     found = entry(database)
     assert found.step == "ig_link_sent" and found.link_sent_at and found.followed_at
     assert found.follow_checks == 1
@@ -108,16 +113,22 @@ def test_follow_check_error_fail_open_and_closed(database, ig, monkeypatch):
 def test_comment_from_follower_gets_link_directly(database, ig):
     ig.profile = {"is_user_follow_business": True}
     handle(comment())
-    assert ig.of("quick") == []
-    (template,) = ig.of("template")
-    assert "comment_id" in template["recipient"]
+    assert ig.of("quick") == [] and ig.of("template") == []
+    # A private reply is the only message allowed → plain text + link (works on
+    # the phone and on instagram.com, which shows no buttons)
+    (reply,) = ig.of("send")
+    assert "comment_id" in reply["recipient"]
+    assert reply["message"]["text"] == (f"{settings.FUNNEL_IG_LINK_MESSAGE.strip()}\n\n"
+                                        f"https://t.me/wk_bot?start={entry(database).start_token}")
     assert entry(database).step == "ig_link_sent"
 
 
 def test_follow_not_required_skips_the_gate(database, ig, monkeypatch):
     monkeypatch.setattr(settings, "FUNNEL_IG_REQUIRE_FOLLOW", False)
     handle(comment())
-    assert ig.of("profile") == [] and len(ig.of("template")) == 1
+    assert ig.of("profile") == [] and ig.of("template") == []
+    assert "comment_id" in ig.of("send")[0]["recipient"]
+    assert entry(database).step == "ig_link_sent"
 
 
 def test_rejected_quick_reply_and_template_fall_back_to_plain_text(database, ig):
@@ -145,7 +156,10 @@ def test_other_dms_go_to_the_ai(database, ig):
     handle(comment(igsid="u6"))                                 # link sent at once
     assert handle(dm(igsid="u6", text="rahmat")) is False       # free text after the link
     assert handle(dm(igsid="u6", text="wunderkind")) is True    # asked again -> link again
-    assert len(ig.of("template")) == 2
+    # first link: private reply (plain text); second: DM template + plain link
+    assert len(ig.of("template")) == 1
+    token = entry(database, "u6").start_token
+    assert sum(f"start={token}" in m["message"]["text"] for m in ig.of("send")) == 2
 
 
 def test_second_comment_reuses_entry_and_sends_new_private_reply(database, ig):

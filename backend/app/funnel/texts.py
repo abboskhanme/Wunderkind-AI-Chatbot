@@ -15,6 +15,8 @@ from app.config import settings
 # --- Buttons ---------------------------------------------------------------------
 FOLLOW_QUICK_REPLY = {"content_type": "text", "title": "✅ Obuna bo'ldim",
                       "payload": "FUNNEL_FOLLOW_CHECK"}
+# Sent after the button: instagram.com (computer) shows no buttons at all
+IG_LINK_TEXT_FALLBACK = "Tugma ko'rinmasa (masalan, kompyuterda), shu havolani oching 👇\n{url}"
 LINK_BUTTON = "📘 Qo'llanmani olish"            # Instagram button title: max 20 chars
 SHARE_PHONE_BUTTON = "📱 Raqamni yuborish"
 CHANNEL_BUTTON = "📢 Kanalga o'tish"
