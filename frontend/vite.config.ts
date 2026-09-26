@@ -23,6 +23,8 @@ export default defineConfig({
       '/api': backend,
       '/connect': backend,
       '/webhook': backend,
+      // Public pages served by the backend: /go/<token>, /f/<form slug>
+      '^/(go|f)/': backend,
     },
   },
 })

@@ -23,7 +23,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config import settings
 from app.db.base import utcnow
-from app.models.funnel import FunnelDelivery, FunnelEntry, InterviewBooking
+from app.models.funnel import FunnelButtonClick, FunnelDelivery, FunnelEntry, InterviewBooking
 from app.models.lead import Lead, LeadMessage
 from app.models.legal import CONFIRMATION_CODE_LENGTH, DataDeletionRequest
 from app.models.profile import CustomerProfile
@@ -111,6 +111,8 @@ async def delete_instagram_user(db: AsyncSession, ig_user_id: str) -> DeletionRe
 
     if entry_ids:
         await db.execute(delete(FunnelDelivery).where(FunnelDelivery.entry_id.in_(entry_ids)))
+        await db.execute(delete(FunnelButtonClick)
+                         .where(FunnelButtonClick.entry_id.in_(entry_ids)))
         booked = await db.execute(
             delete(InterviewBooking).where(InterviewBooking.entry_id.in_(entry_ids)))
         result.bookings = int(booked.rowcount or 0)

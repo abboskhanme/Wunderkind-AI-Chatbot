@@ -106,6 +106,9 @@ class LeadOut(ORM):
     updated_at: datetime
     # Account name from the channel profile (not the name the AI collected)
     profile_name: Optional[str] = None
+    # The form that brought the lead (channel "form", SPEC §15)
+    form_id: Optional[uuid.UUID] = None
+    form_name: Optional[str] = None
 
 
 class LeadDetail(LeadOut):

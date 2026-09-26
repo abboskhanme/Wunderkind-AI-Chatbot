@@ -10,7 +10,8 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin
 
-CHANNELS = ("instagram", "telegram")
+# "form": submissions of the public forms (SPEC §15) — no chat, staff call them
+CHANNELS = ("instagram", "telegram", "form")
 LEAD_STATUSES = ("new", "contacted", "trial", "enrolled", "lost")
 CLOSED_STATUSES = ("enrolled", "lost")
 STAGES = ("greeting", "discovery", "offer", "objection", "closing", "booked", "support")
@@ -60,6 +61,10 @@ class Lead(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     last_followup_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
 
     extra: Mapped[dict[str, Any]] = mapped_column(JSONType, default=dict)
+    # The form that brought this lead (channel "form", SPEC §15)
+    form_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid, ForeignKey("forms.id", ondelete="SET NULL", name="fk_leads_form_id"), index=True
+    )
 
     messages: Mapped[list["LeadMessage"]] = relationship(
         back_populates="lead",

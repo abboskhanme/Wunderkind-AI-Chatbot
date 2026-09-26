@@ -14,6 +14,7 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Response
 from sqlalchemy import delete, distinct, func, select, update
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import undefer
 
 from app import runtime_config
 from app.core.deps import DB, get_current_user, require_admin
@@ -22,7 +23,7 @@ from app.funnel import funnels
 from app.funnel.funnels import FunnelView
 from app.models.funnel import (
     FUNNEL_TEXT_KEYS, LEAD_MAGNET_KEY, Funnel, FunnelEntry, FunnelFile, FunnelMessage,
-    InterviewBooking,
+    FunnelMessageButton, InterviewBooking,
 )
 from app.schemas.api import ReorderIn
 from app.schemas.funnel import FunnelCounts, FunnelIn, FunnelLinks, FunnelOut, FunnelPatch
@@ -177,15 +178,26 @@ async def create_funnel(payload: FunnelIn, db: DB):
 
 
 async def _copy_content(db, source_id: uuid.UUID, target_id: uuid.UUID) -> None:
-    """Sales messages (with images) and the PDF of another funnel."""
+    """Sales messages (with images, buttons and click conditions — ids remapped)
+    and the PDF of another funnel."""
     messages = (await db.execute(
-        select(FunnelMessage.sort_order, FunnelMessage.text, FunnelMessage.delay_minutes,
-               FunnelMessage.is_active, FunnelMessage.image, FunnelMessage.image_content_type)
-        .where(FunnelMessage.funnel_id == source_id))).all()
+        select(FunnelMessage).options(undefer(FunnelMessage.image))
+        .where(FunnelMessage.funnel_id == source_id))).scalars().all()
+    new_ids = {m.id: uuid.uuid4() for m in messages}
+    new_buttons = {b.id: uuid.uuid4() for m in messages for b in m.buttons}
     for m in messages:
-        db.add(FunnelMessage(funnel_id=target_id, sort_order=m.sort_order, text=m.text,
-                             delay_minutes=m.delay_minutes, is_active=m.is_active,
-                             image=m.image, image_content_type=m.image_content_type))
+        # A condition naming a button that no longer exists sends nothing at the
+        # source; remapped to None it would mean "any button" — keep it switched off
+        stale = m.condition_button_id is not None and m.condition_button_id not in new_buttons
+        db.add(FunnelMessage(
+            id=new_ids[m.id], funnel_id=target_id, sort_order=m.sort_order, text=m.text,
+            delay_minutes=m.delay_minutes, is_active=m.is_active and not stale,
+            image=m.image, image_content_type=m.image_content_type,
+            show_book_button=m.show_book_button, condition=m.condition,
+            condition_message_id=new_ids.get(m.condition_message_id),
+            condition_button_id=new_buttons.get(m.condition_button_id),
+            buttons=[FunnelMessageButton(id=new_buttons[b.id], sort_order=b.sort_order,
+                                         text=b.text, url=b.url) for b in m.buttons]))
     pdf = (await db.execute(
         select(FunnelFile.filename, FunnelFile.content_type, FunnelFile.size_bytes,
                FunnelFile.data, FunnelFile.sha256, FunnelFile.tg_file_id)
@@ -238,6 +250,8 @@ async def delete_funnel(funnel_id: uuid.UUID, db: DB):
     if await _has_entries(db, row.id):
         raise HTTPException(409, _HAS_ENTRIES)
     # Explicit: SQLite (tests) does not enforce ON DELETE CASCADE
+    await db.execute(delete(FunnelMessageButton).where(FunnelMessageButton.message_id.in_(
+        select(FunnelMessage.id).where(FunnelMessage.funnel_id == row.id))))
     await db.execute(delete(FunnelMessage).where(FunnelMessage.funnel_id == row.id))
     await db.execute(delete(FunnelFile).where(FunnelFile.funnel_id == row.id))
     await db.delete(row)

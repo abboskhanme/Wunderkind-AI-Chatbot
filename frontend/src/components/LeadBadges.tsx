@@ -1,5 +1,5 @@
-import { Instagram, Send } from 'lucide-react'
-import type { Channel, LeadStatus } from '@/api/types'
+import { ClipboardList, Instagram, Send } from 'lucide-react'
+import type { LeadChannel, LeadStatus } from '@/api/types'
 import { STATUS_COLORS, STATUS_LABELS } from '@/lib/labels'
 import { cn } from '@/lib/cn'
 import { Badge } from './ui'
@@ -8,7 +8,14 @@ export function StatusBadge({ status }: { status: LeadStatus }) {
   return <Badge className={STATUS_COLORS[status] ?? undefined}>{STATUS_LABELS[status] ?? status}</Badge>
 }
 
-export function ChannelIcon({ channel, className }: { channel: Channel | string; className?: string }) {
+export function ChannelIcon({ channel, className }: { channel: LeadChannel | string; className?: string }) {
+  if (channel === 'form') {
+    return (
+      <span className={cn('inline-flex items-center justify-center rounded-full bg-emerald-100 p-1 text-emerald-600', className)} title="Forma">
+        <ClipboardList className="h-3.5 w-3.5" />
+      </span>
+    )
+  }
   if (channel === 'telegram') {
     return (
       <span className={cn('inline-flex items-center justify-center rounded-full bg-sky-100 p-1 text-sky-600', className)} title="Telegram">

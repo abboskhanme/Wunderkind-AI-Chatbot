@@ -8,6 +8,8 @@ import DashboardPage from '@/pages/DashboardPage'
 import InboxPage from '@/pages/InboxPage'
 import LeadsPage from '@/pages/LeadsPage'
 import FunnelPage from '@/pages/FunnelPage'
+import FormsPage from '@/pages/FormsPage'
+import FormEditorPage from '@/pages/FormEditorPage'
 import KnowledgePage from '@/pages/KnowledgePage'
 import BotMenuPage from '@/pages/BotMenuPage'
 import PlaygroundPage from '@/pages/PlaygroundPage'
@@ -43,6 +45,8 @@ export default function App() {
         <Route path="inbox/:leadId" element={<InboxPage />} />
         <Route path="leads" element={<LeadsPage />} />
         <Route path="funnel" element={<FunnelPage />} />
+        <Route path="forms" element={<AdminOnly><FormsPage /></AdminOnly>} />
+        <Route path="forms/:formId" element={<AdminOnly><FormEditorPage /></AdminOnly>} />
         <Route path="knowledge" element={<AdminOnly><KnowledgePage /></AdminOnly>} />
         <Route path="bot-menu" element={<AdminOnly><BotMenuPage /></AdminOnly>} />
         <Route path="playground" element={<AdminOnly><PlaygroundPage /></AdminOnly>} />

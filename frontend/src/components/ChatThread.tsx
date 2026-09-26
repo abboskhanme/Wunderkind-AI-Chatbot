@@ -15,7 +15,19 @@ const BUBBLE: Record<string, string> = {
 
 function StatusLine({ m }: { m: Message }) {
   const to = (m.meta?.to ?? m.meta?.status) as LeadStatus | undefined
-  const label = to && STATUS_LABELS[to] ? `Holat: ${STATUS_LABELS[to]}` : m.text
+  const label = to && STATUS_LABELS[to] ? `Holat: ${STATUS_LABELS[to]}` : (m.text ?? '')
+  // Multi-line records (a form's answers, a funnel step) keep their lines
+  if (label.includes('\n')) {
+    const [title, ...rest] = label.split('\n')
+    return (
+      <div className="mx-auto max-w-md rounded-lg bg-gray-100 px-3 py-2 text-xs text-gray-600">
+        <p className="mb-0.5 flex items-center gap-1 font-medium text-gray-700">
+          <ArrowRightLeft className="h-3 w-3 shrink-0" /> {title} · {fmtDateTime(m.created_at)}
+        </p>
+        <p className="whitespace-pre-wrap">{rest.join('\n')}</p>
+      </div>
+    )
+  }
   return (
     <div className="flex justify-center">
       <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-3 py-1 text-xs text-gray-500">

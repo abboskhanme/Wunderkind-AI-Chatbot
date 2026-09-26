@@ -182,6 +182,67 @@ Qoidalar:
   ma'lumotingizni yozmang. Agar u yerda boshqa narsa bo'lsa, tizim uni o'chirmaydi:
   «Voronka» yozilmaydi va Telegramga ogohlantirish keladi.
 
+### 5.6. Xabarlardagi tugmalar: bosgan va bosmaganlarga alohida xabar
+**Voronka → Xabarlar → Tahrirlash** oynasida har bir sotuv xabariga 8 tagacha
+tugma qo'shish mumkin:
+- **Havolasiz tugma** (masalan «✅ Ha, qiziq»): mijoz bosganini bot yozib oladi.
+- **Havolali tugma** (masalan «🌐 Saytni ko'rish» + `https://...`): saytni ochadi,
+  bosgani ham hisoblanadi.
+- «📝 Suhbatga yozilish» tugmasini xohlasangiz o'chirib qo'yish mumkin.
+
+Keyingi xabarni kimga yuborishni **«Kimga yuboriladi»** maydonida tanlang:
+- **Hammaga** — qo'llanma olgan hammaga, qo'llanmadan keyin belgilangan vaqtda.
+- **Tugmani bosganlarga** — tanlangan tugmani (yoki xabarning istalgan tugmasini)
+  bosganlarga, bosgandan keyin belgilangan vaqtda. Vaqt **0** bo'lsa — bosishi
+  bilan darhol yuboriladi (tunda ham).
+- **Tugmani bosmaganlarga** — o'sha xabarni olib, belgilangan vaqt ichida
+  (masalan 1 kun) tugmani bosmaganlarga.
+
+Misol: 1-xabar «Farzandingiz ingliz tilini o'rganyaptimi?» + «Ha» tugmasi →
+2-xabar «Tugmani bosganlarga: «Ha»», darhol → 3-xabar «Tugmani bosmaganlarga:
+«Ha»», 1 kundan keyin.
+
+Ro'yxatda har tugma yonida nechta odam bosgani va foizi, har xabar ostida
+nechta odamga yuborilgani ko'rinadi. Mijozning suhbatida ham «🔘 Tugma bosildi»
+yozuvi chiqadi.
+
+Qoidalar:
+- Boshqa xabar sharti bog'langan xabarni yoki tugmani o'chirib bo'lmaydi — avval
+  o'sha xabarning shartini o'zgartiring.
+- 09:00–21:00 qoidasi, suhbatga yozilgan yoki `/stop` bosganlarga yubormaslik —
+  shartli xabarlarga ham tegishli.
+
+### 5.7. Formalar («Formalar» bo'limi)
+Google Forms kabi forma yaratib, havolasini reklama, sayt, Instagram bio yoki
+Telegram kanalga qo'yish mumkin. To'ldirganlar avtomatik **Leadlar** bo'limiga
+tushadi, manbasi — o'sha forma.
+
+1. **Formalar → Yangi forma** — nom yozing. Forma «Ism-familiya» va «Telefon raqam»
+   savollari bilan ochiladi.
+2. **Savollar** yorlig'ida savol qo'shing: qisqa/uzun javob, telefon, email, raqam,
+   sana, bitta tanlov, bir nechta tanlov, ro'yxatdan tanlash. Har savolda
+   «Majburiy» belgisi va izoh bor.
+3. **«Lead maydoni»** — javob leadning qaysi katagiga yozilishini tanlang (Ism,
+   Telefon, Yosh/sinf, Qiziqish, Qulay vaqt). Telefonni albatta «Telefon»ga bog'lang —
+   xodim qo'ng'iroq qiladigan raqam shu.
+4. **Sozlamalar** yorlig'ida havolani (masalan `.../f/yozgi-lager`) nusxa oling.
+   Tugma matni, yuborilgandan keyingi xabar va Telegram'ga bildirishnoma ham shu yerda.
+5. **Javoblar** yorlig'ida kim nima yozgani jadvalda ko'rinadi, CSV (Excel) yuklab
+   olish mumkin.
+
+Qoidalar:
+- Bitta odam o'sha formani yana to'ldirsa (telefon bir xil) — yangi lead ochilmaydi,
+  mavjudi yangilanadi. Boshqa formani to'ldirsa — alohida lead.
+- **Leadlar** bo'limida «Manba» filtridan formani tanlab, faqat o'sha formadan
+  kelganlarni ko'rish va CSV yuklab olish mumkin. Kanal ustunida «Forma» ko'rinadi.
+- Formadan kelgan leadga panel orqali yozib bo'lmaydi — telefon orqali bog'laning.
+- Havolaga reklama belgisi qo'shish mumkin: `.../f/yozgi-lager?utm_source=instagram`
+  — u javob bilan saqlanadi va qaysi reklamadan kelganini ko'rsatadi.
+- Javobi bor formani o'chirib bo'lmaydi — **nofaol** qiling (havola «forma yopilgan»
+  deb ko'rsatadi, eski javoblar saqlanadi).
+- Spamdan himoya: juda tez yuborilgan yoki bitta joydan 10 daqiqada 5 tadan ko'p
+  yuborilgan javoblar qabul qilinmaydi.
+
 ## 6. Meta App Review va yuridik sahifalar
 
 Instagram ilovasini «Live» rejimiga o'tkazish (va kerak bo'lsa App Review) uchun

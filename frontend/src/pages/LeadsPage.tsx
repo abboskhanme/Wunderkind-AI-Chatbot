@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
-import { ChevronLeft, ChevronRight, Download, MessagesSquare, Search, Trash2, UserSquare2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Download, MessagesSquare, Search, Trash2, UserSquare2, UserX } from 'lucide-react'
 import { leadsApi, type LeadFilters } from '@/api/leads'
 import { downloadFile, errorMessage } from '@/api/client'
 import type { LeadOut } from '@/api/types'
@@ -10,8 +10,9 @@ import { Button, Card, Drawer, Empty, Input, Loading, PageHeader, Select } from 
 import { ChannelIcon, ScoreBadge, StatusBadge, leadTitle } from '@/components/LeadBadges'
 import { ChatThread } from '@/components/ChatThread'
 import { LeadCard } from '@/components/LeadCard'
+import { ErrorState } from '@/pages/funnel/shared'
 import { isAdmin, useAuth } from '@/lib/auth'
-import { STATUS_LABELS, STATUSES } from '@/lib/labels'
+import { STATUS_LABELS, STATUSES, leadSourceLabel } from '@/lib/labels'
 import { fmtDateTime, fmtNumber } from '@/lib/format'
 
 const PAGE_SIZE = 50
@@ -19,7 +20,7 @@ const PAGE_SIZE = 50
 function LeadDrawer({ leadId, onClose }: { leadId: string | null; onClose: () => void }) {
   const { user } = useAuth()
   const qc = useQueryClient()
-  const { data: lead, isLoading } = useQuery({
+  const { data: lead, isLoading, isError } = useQuery({
     queryKey: ['lead', leadId],
     queryFn: () => leadsApi.get(leadId!),
     enabled: Boolean(leadId),
@@ -45,7 +46,10 @@ function LeadDrawer({ leadId, onClose }: { leadId: string | null; onClose: () =>
         </span>
       ) : 'Lead'}
     >
-      {isLoading || !lead ? (
+      {isError && !lead ? (
+        // e.g. a `?lead=` link (Telegram alert, form answers) to a lead deleted since
+        <Empty icon={<UserX className="h-6 w-6" />} title="Lead topilmadi" text="U o'chirilgan bo'lishi mumkin." />
+      ) : isLoading || !lead ? (
         <Loading />
       ) : (
         <div className="grid gap-0 md:grid-cols-[1fr_280px]">
@@ -81,29 +85,43 @@ function LeadDrawer({ leadId, onClose }: { leadId: string | null; onClose: () =>
 }
 
 export default function LeadsPage() {
+  const [params, setParams] = useSearchParams()
   const [status, setStatus] = useState('')
   const [channel, setChannel] = useState('')
+  const [source, setSource] = useState('')
   const [search, setSearch] = useState('')
   const [debounced, setDebounced] = useState('')
   const [minScore, setMinScore] = useState('')
   const [hasContact, setHasContact] = useState(false)
   const [page, setPage] = useState(1)
-  const [openId, setOpenId] = useState<string | null>(null)
   const [exporting, setExporting] = useState(false)
+
+  // The open drawer lives in the URL (`?lead=<id>`) so Telegram alerts and form answers can link to it
+  const openId = params.get('lead')
+  function setOpenId(id: string | null) {
+    setParams((prev) => {
+      const next = new URLSearchParams(prev)
+      if (id) next.set('lead', id)
+      else next.delete('lead')
+      return next
+    }, { replace: true })
+  }
+
+  const sources = useQuery({ queryKey: ['leads', 'sources'], queryFn: leadsApi.sources, staleTime: 60_000 })
 
   useEffect(() => {
     const t = setTimeout(() => setDebounced(search.trim()), 300)
     return () => clearTimeout(t)
   }, [search])
-  useEffect(() => setPage(1), [status, channel, debounced, minScore, hasContact])
+  useEffect(() => setPage(1), [status, channel, source, debounced, minScore, hasContact])
 
   const filters: LeadFilters = {
-    status, channel, search: debounced,
+    status, channel, source, search: debounced,
     min_score: minScore ? Number(minScore) : undefined,
     has_contact: hasContact || undefined,
     page, page_size: PAGE_SIZE,
   }
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, error, refetch } = useQuery({
     queryKey: ['leads', filters],
     queryFn: () => leadsApi.list(filters),
     placeholderData: (prev) => prev,
@@ -130,7 +148,7 @@ export default function LeadsPage() {
       />
 
       <Card className="mb-4 p-3">
-        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
           <div className="relative lg:col-span-2">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Ism, telefon, @username, qiziqish..." className="pl-9" />
@@ -143,6 +161,19 @@ export default function LeadsPage() {
             <option value="">Barcha kanallar</option>
             <option value="instagram">Instagram</option>
             <option value="telegram">Telegram</option>
+            <option value="form">Forma</option>
+          </Select>
+          <Select
+            value={source}
+            onChange={(e) => setSource(e.target.value)}
+            disabled={sources.isError && !source}
+            title={sources.isError ? "Manbalar ro'yxatini yuklab bo'lmadi" : 'Manba'}
+            aria-label="Manba"
+          >
+            <option value="">{sources.isError ? 'Manbalar yuklanmadi' : 'Barcha manbalar'}</option>
+            {sources.data?.map((o) => (
+              <option key={o.value} value={o.value}>{o.label} ({fmtNumber(o.count)})</option>
+            ))}
           </Select>
           <div className="flex items-center gap-2">
             <Select value={minScore} onChange={(e) => setMinScore(e.target.value)}>
@@ -160,6 +191,7 @@ export default function LeadsPage() {
 
       <Card className="overflow-hidden">
         {isLoading && <Loading />}
+        {isError && !data && <ErrorState error={error} onRetry={() => refetch()} />}
         {data && data.items.length === 0 && (
           <Empty icon={<UserSquare2 className="h-6 w-6" />} title="Leadlar topilmadi" text="Filtrlarni o'zgartiring yoki mijozlar yozishini kuting." />
         )}
@@ -185,7 +217,11 @@ export default function LeadsPage() {
                         <ChannelIcon channel={l.channel} />
                         <div className="min-w-0">
                           <p className="truncate font-medium text-gray-900">{leadTitle(l)}</p>
-                          {l.username && l.name && <p className="truncate text-xs text-gray-500">@{l.username}</p>}
+                          {l.channel === 'form' ? (
+                            <p className="truncate text-xs text-gray-500">{leadSourceLabel(l)}</p>
+                          ) : (
+                            l.username && l.name && <p className="truncate text-xs text-gray-500">@{l.username}</p>
+                          )}
                         </div>
                       </div>
                     </td>

@@ -21,7 +21,7 @@ from sqlalchemy import update
 
 from app.config import settings
 from app.db import session as db_session
-from app.funnel import booking, delivery, funnels, locks, repo, texts
+from app.funnel import booking, buttons, delivery, funnels, locks, repo, texts
 from app.funnel.funnels import FunnelView
 from app.models.funnel import COLLECTION_STEPS, FunnelEntry
 from app.services.phone import extract_phone
@@ -53,8 +53,12 @@ async def claim_update(update: dict, background: BackgroundTasks) -> bool:
 async def _claim(update: dict, background: BackgroundTasks) -> bool:
     callback = update.get("callback_query")
     if isinstance(callback, dict):
-        if str(callback.get("data") or "").startswith(CALLBACK_PREFIX):
+        data = str(callback.get("data") or "")
+        if data.startswith(CALLBACK_PREFIX):
             background.add_task(handle_callback, callback)
+            return True
+        if data.startswith(buttons.CALLBACK_PREFIX):     # sales-message buttons (§14)
+            background.add_task(buttons.handle_callback, callback)
             return True
         return False
 
@@ -214,9 +218,10 @@ def menu_keyboard() -> dict:
 
 
 def grade_keyboard(funnel: FunnelView) -> dict:
-    buttons = [{"text": texts.grade_display(g), "callback_data": f"fb:g:{g}"}
-               for g in funnel.grade_options()]
-    return {"inline_keyboard": [buttons[i:i + 4] for i in range(0, len(buttons), 4)]}
+    grade_buttons = [{"text": texts.grade_display(g), "callback_data": f"fb:g:{g}"}
+                     for g in funnel.grade_options()]
+    return {"inline_keyboard": [grade_buttons[i:i + 4]
+                                for i in range(0, len(grade_buttons), 4)]}
 
 
 async def _save(entry_id: uuid.UUID, **fields: object) -> Optional[FunnelEntry]:

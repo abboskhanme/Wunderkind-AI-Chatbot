@@ -22,7 +22,7 @@ from sqlalchemy import func, select
 
 from app import runtime_config
 from app.agent import knowledge
-from app.api import auth, bot_menu, dashboard, funnel, funnels, leads, playground, users
+from app.api import auth, bot_menu, dashboard, forms, funnel, funnels, leads, playground, users
 from app.api import settings as settings_api
 from app.config import settings
 from app.core.security import hash_password
@@ -32,6 +32,8 @@ from app.funnel import gsheet as funnel_gsheet
 from app.funnel import reminders as funnel_reminders
 from app.funnel import sales as funnel_sales
 from app.legal.pages import router as legal_pages_router
+from app.forms.public import router as forms_public_router
+from app.funnel.buttons import router as funnel_buttons_router
 from app.funnel.landing import router as funnel_landing_router
 from app.instagram.oauth import ensure_identity, refresh_token_if_due
 from app.instagram.meta_callbacks import router as meta_callbacks_router
@@ -193,7 +195,7 @@ if settings.CORS_ORIGINS:
 
 api = APIRouter(prefix="/api")
 for module in (auth, users, settings_api, dashboard, leads, bot_menu, playground, funnel,
-               funnels):
+               funnels, forms):
     api.include_router(module.router)
 app.include_router(api)
 app.include_router(ig_webhook_router)
@@ -202,6 +204,8 @@ app.include_router(oauth_router)
 app.include_router(meta_callbacks_router)
 app.include_router(legal_pages_router)
 app.include_router(funnel_landing_router)
+app.include_router(funnel_buttons_router)
+app.include_router(forms_public_router)
 
 
 @app.get("/health")

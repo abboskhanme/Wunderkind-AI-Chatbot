@@ -97,14 +97,17 @@ export interface Dashboard {
   status: AgentStatus
 }
 
+/** Chat channels (Instagram / Telegram): profiles, playground. */
 export type Channel = 'instagram' | 'telegram'
+/** A lead's channel: a chat channel, or "form" for public form submissions (SPEC §15.2). */
+export type LeadChannel = Channel | 'form'
 export type LeadStatus = 'new' | 'contacted' | 'trial' | 'enrolled' | 'lost'
 export type MessageRole = 'user' | 'assistant' | 'operator' | 'system'
 export type ReplyWindow = 'open' | 'human_agent' | 'closed'
 
 export interface LeadOut {
   id: string
-  channel: Channel
+  channel: LeadChannel
   external_id: string | null
   username: string | null
   source: string
@@ -128,6 +131,10 @@ export interface LeadOut {
   updated_at: string
   /** Account name from the channel profile (not the name the AI collected) */
   profile_name: string | null
+  /** The form that brought this lead (channel "form", SPEC §15.4); null otherwise */
+  form_id: string | null
+  /** That form's current title; null when not a form lead or the form was deleted */
+  form_name: string | null
 }
 
 /** Account profile from Telegram / Instagram (SPEC §13) */
@@ -174,7 +181,7 @@ export interface LeadList {
 
 export interface InboxItem {
   lead_id: string
-  channel: Channel
+  channel: LeadChannel
   username: string | null
   name: string | null
   profile_name: string | null
@@ -346,6 +353,23 @@ export interface FunnelSlot {
   free: number
 }
 
+/** Who gets a sales message: everyone, or by a click on another message's button. */
+export type MessageCondition = 'none' | 'clicked' | 'not_clicked'
+
+export interface MessageButtonOut {
+  id: string
+  text: string
+  url: string | null
+  clicks: number
+}
+
+export interface MessageButtonInput {
+  /** Existing button (keeps its clicks); absent = new button. */
+  id?: string
+  text: string
+  url?: string | null
+}
+
 export interface FunnelMessageOut {
   id: string
   funnel_id: string
@@ -355,12 +379,24 @@ export interface FunnelMessageOut {
   is_active: boolean
   has_image: boolean
   image_content_type: string | null
+  show_book_button: boolean
+  condition: MessageCondition
+  condition_message_id: string | null
+  /** null = any button of condition_message_id */
+  condition_button_id: string | null
+  buttons: MessageButtonOut[]
+  sent_count: number
 }
 
 export interface FunnelMessageInput {
   text: string
   delay_minutes: number
   is_active: boolean
+  buttons?: MessageButtonInput[]
+  show_book_button?: boolean
+  condition?: MessageCondition
+  condition_message_id?: string | null
+  condition_button_id?: string | null
 }
 
 export interface LeadMagnetInfo {
@@ -426,4 +462,102 @@ export interface FunnelPatch {
   keywords?: string
   ig_media_ids?: string
   texts?: Record<string, string>
+}
+
+// --- Forms «Formalar» (docs/SPEC.md section 15) ------------------------------------
+
+export type FormFieldType =
+  | 'short_text'
+  | 'long_text'
+  | 'phone'
+  | 'email'
+  | 'number'
+  | 'date'
+  | 'single_choice'
+  | 'multiple_choice'
+  | 'dropdown'
+
+/** Lead column a form answer fills ("phone" → lead.contact). */
+export type LeadField = 'name' | 'phone' | 'student_age' | 'course_interest' | 'preferred_time'
+
+export interface FormField {
+  /** [a-z0-9]{1,16}, unique within the form; answers are matched by it */
+  id: string
+  type: FormFieldType
+  /** 1..300 chars */
+  label: string
+  required: boolean
+  /** ≤120 chars */
+  placeholder?: string | null
+  /** ≤500 chars */
+  help?: string | null
+  /** Choice types only: 1..30 unique options, 1..200 chars each */
+  options?: string[] | null
+  /** Each lead field at most once per form */
+  lead_field?: LeadField | null
+}
+
+export interface FormOut {
+  id: string
+  title: string
+  /** ^[a-z0-9][a-z0-9-]{0,39}$ — public link /f/<slug> */
+  slug: string
+  description: string
+  fields: FormField[]
+  submit_label: string
+  success_message: string
+  is_active: boolean
+  /** Telegram staff alert on every submission */
+  notify: boolean
+  sort_order: number
+  /** {PUBLIC_URL}/f/<slug>, or relative /f/<slug> when PUBLIC_URL is empty */
+  url: string
+  submissions: number
+  last_submission_at: string | null
+  created_at: string
+  updated_at: string
+}
+
+/** POST /api/forms body; PATCH takes any subset (`fields` replaces the list). */
+export interface FormInput {
+  title: string
+  slug?: string
+  description?: string
+  fields?: FormField[]
+  submit_label?: string
+  success_message?: string
+  is_active?: boolean
+  notify?: boolean
+}
+
+export interface SubmissionAnswer {
+  field_id: string
+  /** Label snapshot at submission time */
+  label: string
+  type: FormFieldType
+  /** multiple_choice → list */
+  value: string | string[]
+}
+
+export interface SubmissionOut {
+  id: string
+  created_at: string
+  lead_id: string | null
+  lead_name: string | null
+  lead_contact: string | null
+  answers: SubmissionAnswer[]
+  /** utm_source, utm_medium, utm_campaign, utm_content, utm_term, ref — only the ones present */
+  utm: Record<string, string>
+}
+
+export interface SubmissionList {
+  items: SubmissionOut[]
+  total: number
+}
+
+/** GET /api/leads/sources: a lead source value, or `form:<form uuid>` per form. */
+export interface LeadSourceOption {
+  value: string
+  label: string
+  count: number
 }

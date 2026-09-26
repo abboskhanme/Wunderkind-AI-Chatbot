@@ -217,11 +217,17 @@ kimga uzatishini tushuntiradi.</p>
 <li>bizga yuborgan xabarlaringiz, Telegram kanalimiz muhokama guruhida kalit so'z bilan yozgan izohlaringiz;</li>
 <li>qo'llanma so'raganingizda — Telegram kanalimizga a'zomisiz yoki yo'q (ha/yo'q).</li>
 </ul>
+<p><b>Saytimizdagi formalar orqali</b> (formani to'ldirsangiz): formadagi savollarga bergan
+javoblaringiz (masalan, ism-familiya, telefon, farzandingiz sinfi) va formaga qaysi havola
+(reklama belgisi, masalan utm_source) orqali kirganingiz. IP manzilingiz faqat spamdan
+himoyalanish uchun qisqa vaqt ishlatiladi va saqlanmaydi.</p>
 <p><b>O'zingiz bergan ma'lumotlar:</b> ism-familiyangiz, telefon raqamingiz (faqat o'zingiz
 yuborganingizda), farzandingizning sinfi (yoki siz aytgan yoshi), qulay vaqt, qabul
 suhbatiga yozilgan sana va vaqt.</p>
 <p><b>Avtomatik yaratiladigan ma'lumotlar:</b> suhbatning qisqa mazmuni, murojaat bosqichi
-va qiziqish darajasi (ball) — xodimlarimiz kimga birinchi qo'ng'iroq qilishni bilishi uchun.</p>
+va qiziqish darajasi (ball) — xodimlarimiz kimga birinchi qo'ng'iroq qilishni bilishi uchun;
+bot xabarlarimizdagi qaysi tugmalarni bosganingiz va qaysi havolalarni ochganingiz (va
+qachon) — keyingi xabarni tanlash uchun.</p>
 <p>Biz yuborgan rasm, ovozli xabar va fayllaringizni yuklab olmaymiz va saqlamaymiz —
 faqat ular yuborilganini qayd etamiz. Profil rasmingiz xodimlarimizga Instagram/Telegram'dan
 olib ko'rsatiladi, uning nusxasini saqlamaymiz. To'lov ma'lumotlari va parollarni to'plamaymiz.</p>
@@ -315,11 +321,17 @@ our admissions staff, why we use it and with whom we share it.</p>
 <li>the messages you send us, and your comments containing our keyword in our Telegram channel's discussion group;</li>
 <li>when you ask for our guide — whether you are a member of our Telegram channel (yes/no).</li>
 </ul>
+<p><b>Through the forms on our website</b> (when you fill one in): your answers to its
+questions (for example your name, phone number and your child's grade) and the link
+marker you came through (for example utm_source). Your IP address is used briefly for
+spam protection only and is not stored.</p>
 <p><b>Information you give us:</b> your name, your phone number (only when you share it),
 your child's grade (or age, if you tell us), a convenient time, and the date and time
 of the admission interview you book.</p>
 <p><b>Generated automatically:</b> a short summary of the conversation, its stage and an
-interest score, so that our staff know whom to call first.</p>
+interest score, so that our staff know whom to call first; which buttons in our bot
+messages you pressed and which of our links you opened, and when — to choose the next
+message we send.</p>
 <p>We do not download or store photos, voice messages or files you send — we only note
 that one was sent. Your profile photo is fetched from Instagram/Telegram to show it to our
 staff; we do not keep a copy. We do not collect payment data or passwords.</p>

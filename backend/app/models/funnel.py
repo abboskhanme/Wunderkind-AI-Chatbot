@@ -11,7 +11,7 @@ from sqlalchemy import (
     Boolean, DateTime, ForeignKey, Index, Integer, LargeBinary, String, Text,
     UniqueConstraint, Uuid, select, text,
 )
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base, JSONType, TimestampMixin, UUIDPrimaryKeyMixin, utcnow
 
@@ -23,6 +23,9 @@ FUNNEL_STEPS = (
 # Steps where the person's Telegram text belongs to the funnel, not to the AI
 COLLECTION_STEPS = ("tg_channel_gate", "ask_name", "ask_phone", "ask_grade")
 BOOKING_STATUSES = ("scheduled", "cancelled", "attended", "no_show")
+# Who gets a sales message (SPEC §14): everyone, or by a click on another message
+MESSAGE_CONDITIONS = ("none", "clicked", "not_clicked")
+MAX_MESSAGE_BUTTONS = 8
 
 LEAD_MAGNET_KEY = "lead_magnet"
 MAX_PDF_BYTES = 20 * 1024 * 1024
@@ -150,9 +153,63 @@ class FunnelMessage(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     image: Mapped[Optional[bytes]] = mapped_column(LargeBinary, deferred=True)
     image_content_type: Mapped[Optional[str]] = mapped_column(String(64))
 
+    # SPEC §14: own buttons, the booking button optional, click-based condition
+    show_book_button: Mapped[bool] = mapped_column(Boolean, default=True,
+                                                   server_default="true", nullable=False)
+    condition: Mapped[str] = mapped_column(String(16), default="none",
+                                           server_default="none", nullable=False)
+    condition_message_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        Uuid, ForeignKey("funnel_messages.id", ondelete="SET NULL",
+                         name="fk_funnel_messages_condition_message_id"))
+    # A button of `condition_message_id`; null = any of its buttons (no FK: the
+    # API refuses to remove a button a condition names)
+    condition_button_id: Mapped[Optional[uuid.UUID]] = mapped_column(Uuid)
+
+    # Always loaded with the message (async: no lazy loads after the session)
+    buttons: Mapped[list["FunnelMessageButton"]] = relationship(
+        order_by="FunnelMessageButton.sort_order", lazy="selectin",
+        cascade="all, delete-orphan")
+
     @property
     def has_image(self) -> bool:
         return self.image_content_type is not None
+
+
+class FunnelMessageButton(UUIDPrimaryKeyMixin, TimestampMixin, Base):
+    """An inline button under a sales message: a link (click tracked through
+    /go/b/<token>) or a plain button whose click the bot records."""
+
+    __tablename__ = "funnel_message_buttons"
+
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("funnel_messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    sort_order: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    text: Mapped[str] = mapped_column(String(64), nullable=False)
+    url: Mapped[Optional[str]] = mapped_column(String(1024))
+
+
+class FunnelButtonClick(UUIDPrimaryKeyMixin, Base):
+    """First click of an entry on a button — what the `clicked` / `not_clicked`
+    conditions read."""
+
+    __tablename__ = "funnel_button_clicks"
+    __table_args__ = (
+        UniqueConstraint("entry_id", "button_id", name="uq_funnel_button_clicks_entry_button"),
+    )
+
+    entry_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("funnel_entries.id", ondelete="CASCADE"), nullable=False
+    )
+    message_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("funnel_messages.id", ondelete="CASCADE"), index=True, nullable=False
+    )
+    button_id: Mapped[uuid.UUID] = mapped_column(
+        Uuid, ForeignKey("funnel_message_buttons.id", ondelete="CASCADE"), index=True,
+        nullable=False
+    )
+    clicked_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow,
+                                                 nullable=False)
 
 
 class FunnelDelivery(UUIDPrimaryKeyMixin, Base):

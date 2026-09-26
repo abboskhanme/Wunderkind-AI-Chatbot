@@ -732,3 +732,182 @@ card in a Business chat is logged as `[Xodim kontakt yubordi: ...]`.
   gave nothing.
 - `GET /api/leads/{id}/avatar` → image bytes (Telegram via bot API server-side;
   Instagram from Meta CDN hosts only, expired link renewed once), 404 if none.
+
+## 14. Buttons on sales messages + click branching (added 2026-09-26)
+
+Client: "messages inside the funnel can have buttons; filter the bot users —
+those who pressed a button get one message, those who did not get another."
+
+### 14.1 Data model (one additive migration)
+- `funnel_message_buttons` — id uuid, message_id → funnel_messages CASCADE (index),
+  sort_order int, text str(64), url str(1024) null, created_at, updated_at.
+  Max 8 per message.
+- `funnel_button_clicks` — id uuid, entry_id → funnel_entries CASCADE,
+  message_id → funnel_messages CASCADE (index), button_id → funnel_message_buttons
+  CASCADE (index), clicked_at; unique (entry_id, button_id): the first click counts.
+- `funnel_messages` gains: `show_book_button` bool default true;
+  `condition` str(16) default `none` (`none | clicked | not_clicked`);
+  `condition_message_id` uuid → funnel_messages SET NULL, null;
+  `condition_button_id` uuid null (no FK; null = any button of that message).
+
+### 14.2 Behaviour
+- Keyboard of a sales message: its buttons (one per row, in order), then the
+  booking button if `show_book_button`.
+- Button without URL → callback `fm:<button id hex>`. A click records the first
+  click of that entry (the person's entry in the message's funnel), logs
+  "🔘 Tugma bosildi: «…»" on the lead, answers the callback with a toast and at once
+  sends the "clicked" follow-ups of this button with delay 0 (any hour).
+- Button with URL → with PUBLIC_URL: `{PUBLIC_URL}/go/b/<token>`, token =
+  base64url(entry id + button id + HMAC-SHA256(SECRET_KEY)[:12]); GET records the
+  click, queues the same instant follow-ups and 302-redirects to the URL.
+  Without PUBLIC_URL or without an entry (test message) → the plain URL, not tracked.
+- Condition (who gets the message; delay anchor):
+  - `none` — everyone; `delay_minutes` after the PDF (unchanged).
+  - `clicked` — pressed the button (or any button of the source message);
+    `delay_minutes` after the first such click (0 = right away, see above).
+  - `not_clicked` — received the source message and did NOT press it;
+    `delay_minutes` (≥ 1) after the source message was delivered; re-checked at
+    send time.
+- Scheduled sends keep every existing rule: 09:00–21:00, 3-day staleness, one
+  message per entry per run, stop on booking / opt-out, `[raqam]` never sent.
+  Instant follow-ups keep the stop rules but ignore the hour window (the person
+  just acted).
+- Validation (400, Uzbek): source message in the same funnel, not the message
+  itself, has buttons; the button belongs to it; no cycle of conditions;
+  `not_clicked` needs delay ≥ 1 min. Deleting a message another message's
+  condition uses → 409; removing a button a condition names → 400.
+- Copying a funnel copies buttons and conditions (ids remapped).
+
+### 14.3 API (`/api/funnel`, admin as before)
+- `FunnelMessageOut` + `show_book_button, condition, condition_message_id,
+  condition_button_id, sent_count, buttons: [{id, text, url, clicks}]`.
+- `FunnelMessageIn` / `FunnelMessagePatch` + `show_book_button, condition,
+  condition_message_id, condition_button_id, buttons: [{id?, text, url?}]`
+  (Patch: a given `buttons` list replaces the set; ids kept = same button, clicks kept).
+- Public `GET /go/b/{token}` (signature-verified, no auth) → 302.
+
+### 14.4 Panel (Voronka → Xabarlar)
+Message modal: "Tugmalar" editor (text + optional link, add/remove/reorder),
+"«Suhbatga yozilish» tugmasi" toggle, "Kimga yuboriladi": Hammaga / Tugmani
+bosganlarga / Tugmani bosmaganlarga + source button picker ("2-xabar: «Ha»" or
+"2-xabar: istalgan tugma"); the delay label follows the condition. List: condition
+badge, buttons with click counts and %, "Yuborildi: N".
+
+### 14.5 Tests
+Keyboard building; callback click → record once + instant follow-up + stop rules;
+URL token sign/verify/redirect + tamper → 404; scheduler clicked / not_clicked
+anchors, re-check at send time, staleness; API validation (cycle, foreign button,
+delete referenced message 409, remove referenced button 400); copy funnel remaps.
+
+## 15. Forms — «Formalar» (added 2026-09-26)
+
+Client: "a new menu «Formalar» where Google-Forms-like forms can be created; we
+share a form's link; whoever fills it lands in Leadlar with that form as the
+source, and leads can be filtered by it."
+
+### 15.1 Data model (one additive migration)
+- `forms` — id uuid, title str(200), slug str(40) unique (`^[a-z0-9][a-z0-9-]{0,39}$`,
+  public link `/f/<slug>`), description text "", fields JSON (list, below),
+  submit_label str(60) "Yuborish", success_message text (Uzbek default),
+  is_active bool true, notify bool true (Telegram staff alert), sort_order int,
+  created_at, updated_at.
+- Field (JSON item): `{id: str [a-z0-9]{1,16}, type, label: str 1..300, required: bool,
+  placeholder?: str ≤120, help?: str ≤500, options?: [str 1..200] (choice types
+  only, 1..30, unique), lead_field?: "name"|"phone"|"student_age"|"course_interest"|
+  "preferred_time"|null}`. Types: `short_text, long_text, phone, email, number,
+  date, single_choice` (radio), `multiple_choice` (checkboxes), `dropdown`.
+  1..40 fields, ids unique, each lead_field at most once per form.
+- `form_submissions` — id uuid, form_id → forms CASCADE (index), lead_id → leads
+  SET NULL (index), answers JSON (list `{field_id, label, type, value}`; label
+  snapshot; value str or list[str]; unanswered optional fields omitted), utm JSON
+  (`utm_source, utm_medium, utm_campaign, utm_content, utm_term, ref` present in the
+  page URL), created_at (index).
+- `leads.form_id` uuid → forms SET NULL, index.
+
+### 15.2 Lead mapping
+- New lead channel `form` (`CHANNELS` += "form"): `source="form"`, `form_id`,
+  `external_id` = submission id hex (opaque, unique). lead_field answers fill
+  `name`, `contact` (phone normalized by services/phone.extract_phone),
+  `student_age`, `course_interest`, `preferred_time`. status `new`, lead_score 50.
+- Dedup: an OPEN lead of the SAME form with the same normalized phone is updated
+  (and gets the new submission line) instead of a new lead. Another form → its own
+  lead with that form as source.
+- Every submission is logged on its lead: `kind=status`, role `system`,
+  "📝 Forma to'ldirildi: «<title>»" + one "<label>: <value>" line per answer;
+  meta `{form_id, submission_id}`; `last_message_at` = now.
+- `channels.send_reply` for channel `form` → `{"sent": false, "error": "Bu lead
+  formadan kelgan — telefon orqali bog'laning"}`; `window("form")` = "closed".
+- `notify` → staff alert (notifier.send_text): form title, answers, panel link
+  `{PUBLIC_URL}/leads?lead=<id>` when PUBLIC_URL is set.
+
+### 15.3 Public page (server-rendered HTML, like /go and /privacy)
+Caddy: `/f/*` → backend.
+- `GET /f/{slug}` → the form: mobile-first, inline CSS, no external assets, works
+  without JS. Unknown or inactive → 404 "Forma topilmadi yoki yopilgan".
+  `?sent=1` → the success message instead of the form.
+- `POST /f/{slug}` (x-www-form-urlencoded; names `q_<field id>`, multiple_choice
+  repeated) → validate: required; short_text ≤ 500, long_text ≤ 5000 chars;
+  email shape; phone via extract_phone; number (int/decimal); date `YYYY-MM-DD`;
+  choices ∈ options. Errors → 400 re-render with the values and per-field messages.
+  Success → 303 `/f/{slug}?sent=1`.
+- Anti-spam: hidden honeypot `website` (filled → 303 success, nothing stored);
+  signed render token `_t` = HMAC(SECRET_KEY-derived key, form id + issued unix):
+  younger than 2 s / older than 24 h / bad → 400 re-render "qayta yuboring" with a
+  fresh token; ≤ 5 submissions / 10 min per IP per form (store key; IP from
+  CF-Connecting-IP, else first X-Forwarded-For, else peer; never stored in the DB).
+- utm_*/ref of the GET URL are carried in hidden inputs into `utm`.
+- After qa-security: body read streamed and cut at 256 KB (Caddy `request_body` 256KB
+  on `/f/*` too), ≤ 2000 fields; the render token submits once; IPv6 rate-limit
+  bucket = the /64; ≤ 10 staff alerts / minute / form (submissions still stored);
+  control characters stripped from answers/utm; an existing lead found by phone
+  only gets its EMPTY columns filled (a stranger with the phone cannot rename it).
+- Footer: "Ma'lumotlaringiz maxfiylik siyosatiga muvofiq saqlanadi" → /privacy.
+
+### 15.4 Admin API (`/api/forms`, JWT; A = admin, O = operator)
+- `GET /forms` (A,O) → `FormOut[]` sorted by sort_order, created_at desc;
+  `FormOut = {id, title, slug, description, fields: FormField[], submit_label,
+  success_message, is_active, notify, sort_order, url, submissions: int,
+  last_submission_at: datetime|null, created_at, updated_at}`;
+  `url = {PUBLIC_URL}/f/<slug>` (relative `/f/<slug>` when PUBLIC_URL is empty).
+- `GET /forms/{id}` (A,O) → FormOut; unknown → 404 "Forma topilmadi".
+- `POST /forms` (A) `FormIn = {title, slug?, description?, fields?, submit_label?,
+  success_message?, is_active?, notify?}` → 201 FormOut. slug absent → from title
+  (transliterated, unique suffix); given and taken → 400 "Bu havola band".
+  fields absent/empty → defaults: «Ism-familiya» (short_text, required, lead_field
+  name), «Telefon raqam» (phone, required, lead_field phone).
+- `PATCH /forms/{id}` (A) — any FormIn key; `fields` replaces the list → FormOut.
+- `DELETE /forms/{id}` (A) → 204; with submissions → 409 "Formada javoblar bor —
+  o'chirib bo'lmaydi. Uni nofaol qiling."
+- `GET /forms/{id}/submissions?page=1&page_size=50` (A,O) → `{items: SubmissionOut[],
+  total}`, newest first; `SubmissionOut = {id, created_at, lead_id, lead_name,
+  lead_contact, answers: [{field_id, label, type, value}], utm: {}}`.
+- `DELETE /forms/{id}/submissions/{submission_id}` (A) → 204 (a person's deletion
+  request; the lead stays). `DELETE /api/leads/{id}` also deletes that lead's submissions.
+- `GET /forms/{id}/submissions.csv` (A,O; `?token=` accepted) → CSV: Sana, one column
+  per CURRENT field label (answers matched by field_id), UTM; cells starting with
+  = + - @ prefixed with `'`.
+- Leads: `GET /api/leads` and `/api/leads/export.csv` gain `source` (a lead source
+  value, or `form:<form uuid>`); `channel=form` works. `LeadOut` gains `form_id`,
+  `form_name`. New `GET /api/leads/sources` (A,O) → `[{value, label, count}]`:
+  distinct non-form sources with Uzbek labels + one row per form (`form:<id>`,
+  label = form title).
+
+### 15.5 Panel
+- Sidebar «Formalar» after «Voronka» (admin only; icon ClipboardList); routes
+  `/forms` (list) and `/forms/:formId` (editor).
+- List: title, Faol/Nofaol, javoblar soni, oxirgi javob, link with copy + open;
+  «Yangi forma» → modal (title) → POST → editor.
+- Editor tabs: **Savollar** (title, description; field cards: label, type, required,
+  placeholder, help, options for choice types, «Lead maydoni» select; add / move /
+  delete; «Saqlash»), **Javoblar** (submissions table by current labels, open lead,
+  CSV), **Sozlamalar** (link/slug + copy/open, active, submit label, success
+  message, Telegram alert toggle, delete).
+- Leadlar: «Manba» select from `/api/leads/sources`; `?lead=<id>` opens that
+  lead's drawer; form leads show channel «Forma» and the form name as source.
+
+### 15.6 Tests
+Public GET/POST: validation errors re-render, success creates lead + submission +
+log line + alert, dedup same form/phone, another form → new lead, honeypot, token
+age, rate limit, inactive 404, utm capture. API: RBAC (operator 403 on writes, 401
+without token), slug rules, field validation, delete 409, submissions + CSV, leads
+`source`/`form_id` filters and `/sources`. send_reply refuses form leads.

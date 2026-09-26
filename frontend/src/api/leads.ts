@@ -1,12 +1,14 @@
 import { api } from './client'
 import type {
-  Assignee, CustomerProfile, InboxItem, LeadDetail, LeadList, LeadOut, LeadPatch, Message,
-  ReplyResult,
+  Assignee, CustomerProfile, InboxItem, LeadDetail, LeadList, LeadOut, LeadPatch, LeadSourceOption,
+  Message, ReplyResult,
 } from './types'
 
 export interface LeadFilters {
   status?: string
   channel?: string
+  /** A lead source value, or `form:<form uuid>` (see `leadsApi.sources`) */
+  source?: string
   search?: string
   min_score?: number
   has_contact?: boolean
@@ -49,6 +51,8 @@ export const leadsApi = {
   addNote: (id: string, text: string) =>
     api.post<Message>(`/leads/${id}/notes`, { text }).then((r) => r.data),
   assignees: () => api.get<Assignee[]>('/leads/assignees').then((r) => r.data),
+  /** Values for the «Manba» filter: non-form sources + one row per form (SPEC 15.4). */
+  sources: () => api.get<LeadSourceOption[]>('/leads/sources').then((r) => r.data),
   refreshProfile: (id: string) =>
     api.post<CustomerProfile | null>(`/leads/${id}/profile/refresh`).then((r) => r.data),
   avatarBlob: (id: string) =>

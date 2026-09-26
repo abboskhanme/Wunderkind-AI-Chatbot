@@ -1,7 +1,8 @@
 import { useState, type ComponentType } from 'react'
 import { NavLink, Outlet, useLocation } from 'react-router-dom'
 import {
-  BookOpen, Bot, FlaskConical, LayoutDashboard, LogOut, Magnet, Menu, MessagesSquare, Settings, Users, UserSquare2, X,
+  BookOpen, Bot, ClipboardList, FlaskConical, LayoutDashboard, LogOut, Magnet, Menu, MessagesSquare, Settings, Users,
+  UserSquare2, X,
 } from 'lucide-react'
 import { isAdmin, useAuth } from '@/lib/auth'
 import { USER_ROLE_LABELS } from '@/lib/labels'
@@ -19,6 +20,7 @@ export const NAV_ITEMS: NavItem[] = [
   { to: '/inbox', label: 'Suhbatlar', icon: MessagesSquare },
   { to: '/leads', label: 'Leadlar', icon: UserSquare2 },
   { to: '/funnel', label: 'Voronka', icon: Magnet },
+  { to: '/forms', label: 'Formalar', icon: ClipboardList, adminOnly: true },
   { to: '/knowledge', label: 'Bilim bazasi', icon: BookOpen, adminOnly: true },
   { to: '/bot-menu', label: 'Bot menyusi', icon: Bot, adminOnly: true },
   { to: '/playground', label: 'Sinov', icon: FlaskConical, adminOnly: true },

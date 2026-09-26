@@ -1,5 +1,6 @@
 import type {
-  BookingStatus, FunnelSource, FunnelStatKey, FunnelStep, LeadStatus, MessageRole, ReplyWindow,
+  BookingStatus, FormFieldType, FunnelSource, FunnelStatKey, FunnelStep, LeadField, LeadStatus,
+  MessageRole, ReplyWindow,
 } from '@/api/types'
 
 export const STATUS_LABELS: Record<LeadStatus, string> = {
@@ -33,6 +34,7 @@ export const STAGE_LABELS: Record<string, string> = {
 export const CHANNEL_LABELS: Record<string, string> = {
   instagram: 'Instagram',
   telegram: 'Telegram',
+  form: 'Forma',
 }
 
 export const SOURCE_LABELS: Record<string, string> = {
@@ -41,6 +43,13 @@ export const SOURCE_LABELS: Record<string, string> = {
   instagram_import: 'Instagram (import)',
   lead_magnet_instagram: 'Qo\'llanma (Instagram)',
   lead_magnet_telegram: 'Qo\'llanma (Telegram)',
+  form: 'Forma',
+}
+
+/** Where a lead came from; form leads show the form's title («Forma: Qabul 2026»). */
+export function leadSourceLabel(l: { source: string; form_name?: string | null }): string {
+  if (l.source === 'form') return l.form_name ? `Forma: ${l.form_name}` : SOURCE_LABELS.form
+  return SOURCE_LABELS[l.source] ?? l.source
 }
 
 export const ROLE_LABELS: Record<MessageRole, string> = {
@@ -134,3 +143,30 @@ export function gradeLabel(grade: string | null | undefined): string | null {
   if (!grade) return null
   return /^\d+$/.test(grade.trim()) ? `${grade.trim()}-sinf` : grade
 }
+
+// --- Forms «Formalar» -------------------------------------------------------------
+
+export const FORM_FIELD_TYPE_LABELS: Record<FormFieldType, string> = {
+  short_text: 'Qisqa javob',
+  long_text: 'Uzun javob',
+  phone: 'Telefon',
+  email: 'Email',
+  number: 'Raqam',
+  date: 'Sana',
+  single_choice: 'Bitta tanlov',
+  multiple_choice: 'Bir nechta tanlov',
+  dropdown: "Ro'yxatdan tanlash",
+}
+
+export const FORM_FIELD_TYPES = Object.keys(FORM_FIELD_TYPE_LABELS) as FormFieldType[]
+
+/** Lead column an answer is copied into (the «Lead maydoni» select). */
+export const LEAD_FIELD_LABELS: Record<LeadField, string> = {
+  name: 'Ism',
+  phone: 'Telefon',
+  student_age: 'Yosh / sinf',
+  course_interest: 'Qiziqish',
+  preferred_time: 'Qulay vaqt',
+}
+
+export const LEAD_FIELDS = Object.keys(LEAD_FIELD_LABELS) as LeadField[]

@@ -29,7 +29,8 @@ from app.funnel.funnels import FunnelView
 from app.models.bot_menu import ALLOWED_IMAGE_TYPES, MAX_IMAGE_BYTES
 from app.models.funnel import (
     BOOKING_STATUSES, FUNNEL_SOURCES, FUNNEL_STEPS, LEAD_MAGNET_KEY, MAX_PDF_BYTES,
-    FunnelDelivery, FunnelEntry, FunnelFile, FunnelMessage, InterviewBooking,
+    FunnelButtonClick, FunnelDelivery, FunnelEntry, FunnelFile, FunnelMessage,
+    FunnelMessageButton, InterviewBooking,
 )
 from app.models.lead import Lead
 from app.models.user import User
@@ -37,8 +38,8 @@ from app.schemas.api import ReorderIn
 from app.schemas.funnel import (
     BookingCounts, BookingOut, BookingStatus, BookingUpdate, DayStats, FunnelEntryList,
     FunnelEntryOut, FunnelMessageIn, FunnelMessageOut, FunnelMessagePatch, FunnelStats,
-    LeadMagnetOut, ResyncOut, SentOut, SheetTestOut, SlotOut, SourceCount, StepCount,
-    TestMessageIn,
+    LeadMagnetOut, MessageButtonIn, ResyncOut, SentOut, SheetTestOut, SlotOut, SourceCount,
+    StepCount, TestMessageIn,
 )
 from app.telegram_business.client import telegram
 
@@ -295,9 +296,107 @@ async def _message(db, message_id: uuid.UUID) -> FunnelMessage:
     return item
 
 
+async def _outs(db, items: list[FunnelMessage]) -> list[FunnelMessageOut]:
+    """Messages with how many people got each one and pressed each button."""
+    ids = [m.id for m in items]
+    sent: dict[uuid.UUID, int] = {}
+    clicks: dict[uuid.UUID, int] = {}
+    if ids:
+        sent = dict((await db.execute(
+            select(FunnelDelivery.message_id, func.count())
+            .where(FunnelDelivery.message_id.in_(ids)).group_by(FunnelDelivery.message_id)
+        )).all())
+        clicks = dict((await db.execute(
+            select(FunnelButtonClick.button_id, func.count())
+            .where(FunnelButtonClick.message_id.in_(ids)).group_by(FunnelButtonClick.button_id)
+        )).all())
+    out = []
+    for m in items:
+        item = FunnelMessageOut.model_validate(m)
+        item.sent_count = int(sent.get(m.id, 0))
+        for button in item.buttons:
+            button.clicks = int(clicks.get(button.id, 0))
+        out.append(item)
+    return out
+
+
+async def _out(db, item: FunnelMessage) -> FunnelMessageOut:
+    await db.refresh(item, ["buttons"])
+    return (await _outs(db, [item]))[0]
+
+
+async def _dependents(db, message_id: uuid.UUID) -> list[FunnelMessage]:
+    """Messages whose condition reads this message's buttons."""
+    return list((await db.execute(
+        select(FunnelMessage).where(FunnelMessage.condition_message_id == message_id)
+    )).scalars().all())
+
+
+async def _set_buttons(db, item: FunnelMessage, wanted: list[MessageButtonIn]) -> None:
+    """Replace the button set; a button another message's condition names stays."""
+    current = {b.id: b for b in item.buttons}
+    kept_ids = {b.id for b in wanted if b.id in current}
+    removed = set(current) - kept_ids
+    for other in await _dependents(db, item.id):
+        if other.condition_button_id in removed:
+            raise HTTPException(400, f"«{current[other.condition_button_id].text}» tugmasi "
+                                "boshqa xabar shartida ishlatilgan — avval o'sha xabarni o'zgartiring")
+        # "Any button": removing one would turn its pressers into "did not press"
+        if other.condition_button_id is None and removed:
+            raise HTTPException(400, "Bu xabar tugmalariga boshqa xabar sharti bog'langan — "
+                                "tugmani o'chirib bo'lmaydi (nomini o'zgartirish mumkin)")
+    if removed:
+        # Explicit: SQLite (tests) does not enforce ON DELETE CASCADE
+        await db.execute(delete(FunnelButtonClick).where(FunnelButtonClick.button_id.in_(removed)))
+    buttons = []
+    for index, spec in enumerate(wanted):
+        button = current.get(spec.id) if spec.id else None
+        if button is None:
+            button = FunnelMessageButton(id=uuid.uuid4(), message_id=item.id)
+        button.text = spec.text
+        button.url = spec.url
+        button.sort_order = index
+        buttons.append(button)
+    item.buttons = buttons
+
+
+async def _set_condition(db, item: FunnelMessage, condition: str,
+                         source_id: Optional[uuid.UUID], button_id: Optional[uuid.UUID]) -> None:
+    if condition == "none":
+        item.condition, item.condition_message_id, item.condition_button_id = "none", None, None
+        return
+    if source_id is None:
+        raise HTTPException(400, "Qaysi xabar tugmasi — tanlang")
+    if source_id == item.id:
+        raise HTTPException(400, "Xabar o'z tugmasiga shart qo'ya olmaydi")
+    source = await db.get(FunnelMessage, source_id)
+    if source is None or source.funnel_id != item.funnel_id:
+        raise HTTPException(400, "Shart uchun xabar shu voronkadan bo'lishi kerak")
+    if not source.buttons:
+        raise HTTPException(400, "Tanlangan xabarda tugma yo'q")
+    if button_id is not None and all(b.id != button_id for b in source.buttons):
+        raise HTTPException(400, "Tugma tanlangan xabarga tegishli emas")
+    # No cycle: following the sources from `source` must never come back here
+    by_id = {m.id: m for m in await _messages(db, item.funnel_id)}
+    seen, step = set(), source
+    while step is not None and step.condition_message_id and step.id not in seen:
+        if step.condition_message_id == item.id:
+            raise HTTPException(400, "Xabarlar shartlari aylana bo'lib qoldi — boshqa tugma tanlang")
+        seen.add(step.id)
+        step = by_id.get(step.condition_message_id)
+    item.condition, item.condition_message_id, item.condition_button_id = (
+        condition, source_id, button_id)
+
+
+def _check_delay(item: FunnelMessage) -> None:
+    if item.condition == "not_clicked" and item.delay_minutes < 1:
+        raise HTTPException(400, "«Bosmaganlarga» xabari uchun kutish vaqtini kiriting "
+                            "(masalan, 1 kun) — shuncha vaqtda bosmaganlarga boradi")
+
+
 @router.get("/messages", response_model=list[FunnelMessageOut], dependencies=admin)
 async def list_messages(db: DB, funnel_id: Optional[uuid.UUID] = None):
-    return await _messages(db, (await _funnel(db, funnel_id)).id)
+    return await _outs(db, await _messages(db, (await _funnel(db, funnel_id)).id))
 
 
 @router.post("/messages", response_model=FunnelMessageOut, status_code=201, dependencies=admin)
@@ -307,29 +406,46 @@ async def create_message(payload: FunnelMessageIn, db: DB,
     max_order = (await db.execute(
         select(func.max(FunnelMessage.sort_order)).where(FunnelMessage.funnel_id == funnel.id)
     )).scalar() or 0
-    item = FunnelMessage(funnel_id=funnel.id, text=payload.text.strip(),
+    item = FunnelMessage(id=uuid.uuid4(), funnel_id=funnel.id, text=payload.text.strip(),
                          delay_minutes=payload.delay_minutes, is_active=payload.is_active,
-                         sort_order=max_order + 1)
+                         sort_order=max_order + 1, show_book_button=payload.show_book_button,
+                         condition="none", buttons=[])
     db.add(item)
+    await _set_buttons(db, item, payload.buttons)
+    await _set_condition(db, item, payload.condition, payload.condition_message_id,
+                         payload.condition_button_id)
+    _check_delay(item)
     await db.commit()
-    return item
+    return await _out(db, item)
 
 
 @router.patch("/messages/{message_id}", response_model=FunnelMessageOut, dependencies=admin)
 async def update_message(message_id: uuid.UUID, payload: FunnelMessagePatch, db: DB):
     item = await _message(db, message_id)
-    for key, value in payload.model_dump(exclude_unset=True).items():
+    data = payload.model_dump(exclude_unset=True)
+    for key in ("text", "delay_minutes", "is_active", "show_book_button"):
+        value = data.get(key)
         if value is not None:
             setattr(item, key, value.strip() if isinstance(value, str) else value)
+    if payload.buttons is not None:
+        await _set_buttons(db, item, payload.buttons)
+    if payload.condition is not None:
+        await _set_condition(db, item, payload.condition, payload.condition_message_id,
+                             payload.condition_button_id)
+    _check_delay(item)
     await db.commit()
-    return item
+    return await _out(db, item)
 
 
 @router.delete("/messages/{message_id}", status_code=204, dependencies=admin)
 async def delete_message(message_id: uuid.UUID, db: DB):
     item = await _message(db, message_id)
+    if await _dependents(db, item.id):
+        raise HTTPException(409, "Bu xabar tugmalariga boshqa xabar sharti bog'langan — "
+                            "avval o'sha xabarni o'zgartiring yoki o'chiring")
     # Explicit: SQLite (tests) does not enforce ON DELETE CASCADE
     await db.execute(delete(FunnelDelivery).where(FunnelDelivery.message_id == item.id))
+    await db.execute(delete(FunnelButtonClick).where(FunnelButtonClick.message_id == item.id))
     await db.delete(item)
     await db.commit()
     return Response(status_code=204)
@@ -343,7 +459,7 @@ async def reorder_messages(payload: ReorderIn, db: DB, funnel_id: Optional[uuid.
         if message_id in items:          # ids of other funnels are ignored
             items[message_id].sort_order = index
     await db.commit()
-    return await _messages(db, funnel.id)
+    return await _outs(db, await _messages(db, funnel.id))
 
 
 @router.put("/messages/{message_id}/image", response_model=FunnelMessageOut, dependencies=admin)
@@ -359,7 +475,7 @@ async def upload_message_image(message_id: uuid.UUID, db: DB, file: UploadFile =
     item.image = data
     item.image_content_type = file.content_type
     await db.commit()
-    return item
+    return await _out(db, item)
 
 
 @router.delete("/messages/{message_id}/image", status_code=204, dependencies=admin)

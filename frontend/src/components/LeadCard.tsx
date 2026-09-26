@@ -8,7 +8,7 @@ import type { LeadDetail, LeadPatch, LeadStatus } from '@/api/types'
 import { Button, Input, Label, Select, Textarea } from './ui'
 import { AccountCard } from './AccountCard'
 import { ScoreBadge } from './LeadBadges'
-import { SOURCE_LABELS, STAGE_LABELS, STATUS_LABELS, STATUSES } from '@/lib/labels'
+import { STAGE_LABELS, STATUS_LABELS, STATUSES, leadSourceLabel } from '@/lib/labels'
 import { fmtDateTime } from '@/lib/format'
 
 interface Form {
@@ -103,10 +103,11 @@ export function LeadCard({ lead }: { lead: LeadDetail }) {
         <ScoreBadge score={lead.lead_score} />
         {lead.stage && <span className="rounded-full bg-brand-50 px-2 py-0.5 font-medium text-brand-700">{STAGE_LABELS[lead.stage] ?? lead.stage}</span>}
         {lead.language && <span className="rounded-full bg-gray-100 px-2 py-0.5">{lead.language}</span>}
-        <span className="rounded-full bg-gray-100 px-2 py-0.5">{SOURCE_LABELS[lead.source] ?? lead.source}</span>
+        <span className="rounded-full bg-gray-100 px-2 py-0.5">{leadSourceLabel(lead)}</span>
       </div>
 
-      <AccountCard lead={lead} />
+      {/* Form leads have no Instagram/Telegram account to show */}
+      {lead.channel !== 'form' && <AccountCard lead={lead} />}
 
       {lead.summary && (
         <div className="rounded-lg bg-brand-50/60 p-3 text-sm text-gray-700 ring-1 ring-brand-100">

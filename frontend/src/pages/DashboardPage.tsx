@@ -141,7 +141,7 @@ export default function DashboardPage() {
                         <span className="text-gray-500">{fmtNumber(c.conversations)} · {pct}%</span>
                       </div>
                       <div className="h-2 rounded-full bg-gray-100">
-                        <div className={c.channel === 'telegram' ? 'h-2 rounded-full bg-sky-500' : 'h-2 rounded-full bg-pink-500'} style={{ width: `${pct}%` }} />
+                        <div className={c.channel === 'telegram' ? 'h-2 rounded-full bg-sky-500' : c.channel === 'form' ? 'h-2 rounded-full bg-emerald-500' : 'h-2 rounded-full bg-pink-500'} style={{ width: `${pct}%` }} />
                       </div>
                     </div>
                   )

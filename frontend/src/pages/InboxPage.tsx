@@ -10,7 +10,7 @@ import { Badge, Button, Empty, Input, Loading, Select, Spinner, Textarea, Toggle
 import { ChannelIcon, ScoreBadge, StatusBadge, leadTitle } from '@/components/LeadBadges'
 import { ChatThread } from '@/components/ChatThread'
 import { LeadCard } from '@/components/LeadCard'
-import { ROLE_LABELS, WINDOW_LABELS } from '@/lib/labels'
+import { ROLE_LABELS, WINDOW_LABELS, leadSourceLabel } from '@/lib/labels'
 import { fmtShort } from '@/lib/format'
 import { cn } from '@/lib/cn'
 
@@ -127,7 +127,9 @@ function Conversation({ leadId, window }: { leadId: string; window: ReplyWindow 
   if (isLoading) return <div className="flex flex-1 items-center justify-center"><Spinner /></div>
   if (isError || !lead) return <div className="flex-1"><Empty title="Suhbat topilmadi" /></div>
 
-  const effectiveWindow: ReplyWindow = lead.channel === 'telegram' ? 'open' : window ?? windowFrom(lead.last_customer_at)
+  // Form leads have no chat to answer in (SPEC 15.2) — staff call them
+  const isForm = lead.channel === 'form'
+  const effectiveWindow: ReplyWindow = isForm ? 'closed' : lead.channel === 'telegram' ? 'open' : window ?? windowFrom(lead.last_customer_at)
   const replyDisabled = !noteMode && effectiveWindow === 'closed'
 
   function submit(e: FormEvent) {
@@ -149,7 +151,7 @@ function Conversation({ leadId, window }: { leadId: string; window: ReplyWindow 
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-semibold text-gray-900">{leadTitle(lead)}</p>
             <p className="truncate text-xs text-gray-500">
-              {lead.username ? `@${lead.username}` : lead.external_id}
+              {isForm ? leadSourceLabel(lead) : lead.username ? `@${lead.username}` : lead.external_id}
               {lead.contact ? ` · ${lead.contact}` : ''}
             </p>
           </div>
@@ -168,7 +170,9 @@ function Conversation({ leadId, window }: { leadId: string; window: ReplyWindow 
         <form onSubmit={submit} className="border-t border-gray-200 bg-white p-3">
           {replyDisabled && (
             <p className="mb-2 rounded-lg bg-amber-50 px-3 py-2 text-xs text-amber-800 ring-1 ring-amber-200">
-              Instagram javob oynasi yopilgan: mijozning oxirgi xabaridan 7 kundan ko'p vaqt o'tgan. Instagram ilovasidan yoki telefon orqali bog'laning. Izoh qoldirishingiz mumkin.
+              {isForm
+                ? "Bu lead formadan kelgan — unga bu yerdan yozib bo'lmaydi. Telefon orqali bog'laning. Izoh qoldirishingiz mumkin."
+                : "Instagram javob oynasi yopilgan: mijozning oxirgi xabaridan 7 kundan ko'p vaqt o'tgan. Instagram ilovasidan yoki telefon orqali bog'laning. Izoh qoldirishingiz mumkin."}
             </p>
           )}
           {!noteMode && effectiveWindow === 'human_agent' && (
@@ -255,6 +259,7 @@ export default function InboxPage() {
               <option value="">Barcha kanallar</option>
               <option value="instagram">Instagram</option>
               <option value="telegram">Telegram</option>
+              <option value="form">Forma</option>
             </Select>
             <label className="flex shrink-0 cursor-pointer items-center gap-1.5 text-xs text-gray-600">
               <input type="checkbox" checked={onlyUnread} onChange={(e) => setOnlyUnread(e.target.checked)} className="rounded border-gray-300 text-brand-600 focus:ring-brand-500" />

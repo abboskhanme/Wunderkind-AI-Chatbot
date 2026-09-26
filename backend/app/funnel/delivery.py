@@ -12,7 +12,7 @@ from sqlalchemy import select, update
 
 from app.config import settings
 from app.db import session as db_session
-from app.funnel import funnels, locks, repo, texts
+from app.funnel import buttons, funnels, locks, repo, texts
 from app.funnel.funnels import FunnelView
 from app.models.funnel import LEAD_MAGNET_KEY, FunnelEntry, FunnelFile, FunnelMessage
 from app.state.store import store
@@ -30,6 +30,21 @@ def book_keyboard(funnel: Optional[FunnelView] = None) -> dict:
     label = funnel.text("FUNNEL_BOOK_BUTTON") if funnel else settings.FUNNEL_BOOK_BUTTON
     return {"inline_keyboard": [[{"text": label or "📝 Suhbatga yozilish",
                                   "callback_data": "fb:start"}]]}
+
+
+def message_keyboard(message: FunnelMessage, funnel: Optional[FunnelView] = None,
+                     entry_id: Optional[uuid.UUID] = None) -> Optional[dict]:
+    """A sales message's own buttons (one per row), then the booking button
+    unless switched off (SPEC §14). Link clicks are tracked per entry."""
+    rows = []
+    for button in message.buttons:
+        if button.url:
+            rows.append([{"text": button.text, "url": buttons.button_url(button, entry_id)}])
+        else:
+            rows.append([{"text": button.text, "callback_data": buttons.callback_data(button)}])
+    if message.show_book_button:
+        rows.extend(book_keyboard(funnel)["inline_keyboard"])
+    return {"inline_keyboard": rows} if rows else None
 
 
 def _is_file_id_error(result: dict) -> bool:
@@ -233,10 +248,12 @@ async def _alert_once(key: str, text: str) -> None:
 
 
 async def send_sales_message(chat_id: str, message: FunnelMessage,
-                             funnel: Optional[FunnelView] = None) -> dict:
-    """One sales-sequence message (optional image) with its funnel's booking button."""
+                             funnel: Optional[FunnelView] = None,
+                             entry_id: Optional[uuid.UUID] = None) -> dict:
+    """One sales-sequence message (optional image) with its buttons and its
+    funnel's booking button. `entry_id` = the recipient (tracked link clicks)."""
     text = (message.text or "").strip()
-    markup = book_keyboard(funnel)
+    markup = message_keyboard(message, funnel, entry_id)
     if not message.has_image:
         return await telegram.send_message(chat_id, text, reply_markup=markup)
 

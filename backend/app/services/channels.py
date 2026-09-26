@@ -22,6 +22,8 @@ def window(channel: str, last_customer_at: Optional[datetime]) -> str:
     """open | human_agent | closed — can staff still write to this person?"""
     if channel == "telegram":
         return "open"
+    if channel == "form":
+        return "closed"        # a form submission: no chat to write into (SPEC §15.2)
     if not last_customer_at:
         return "closed"
     if last_customer_at.tzinfo is None:
@@ -36,6 +38,8 @@ def window(channel: str, last_customer_at: Optional[datetime]) -> str:
 
 async def send_reply(lead: Lead, text: str) -> dict:
     """Send an operator message. Returns {"sent", "error"?, "tag"?}."""
+    if lead.channel == "form":
+        return {"sent": False, "error": "Bu lead formadan kelgan — telefon orqali bog'laning"}
     key = store_key(lead)
     if lead.channel == "telegram":
         if not telegram.enabled:

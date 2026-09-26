@@ -1,11 +1,15 @@
 """Pydantic schemas for the funnel admin API (SPEC §10.4, §11.3)."""
 from __future__ import annotations
 
+import re
 import uuid
 from datetime import datetime
 from typing import Literal, Optional
+from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.models.funnel import MAX_MESSAGE_BUTTONS
 
 BookingStatus = Literal["scheduled", "cancelled", "attended", "no_show"]
 MAX_DELAY_MINUTES = 60 * 24 * 60          # 60 days
@@ -103,6 +107,18 @@ class SlotOut(BaseModel):
 
 
 # --- Sales sequence -----------------------------------------------------------------
+MessageCondition = Literal["none", "clicked", "not_clicked"]     # = MESSAGE_CONDITIONS
+MAX_BUTTONS = MAX_MESSAGE_BUTTONS
+_URL_RE = re.compile(r"^https?://[^\s/$.?#][^\s]*$", re.IGNORECASE)
+
+
+class MessageButtonOut(ORM):
+    id: uuid.UUID
+    text: str
+    url: Optional[str] = None
+    clicks: int = 0
+
+
 class FunnelMessageOut(ORM):
     id: uuid.UUID
     funnel_id: uuid.UUID
@@ -112,6 +128,45 @@ class FunnelMessageOut(ORM):
     is_active: bool
     has_image: bool
     image_content_type: Optional[str] = None
+    # SPEC §14
+    show_book_button: bool = True
+    condition: str = "none"
+    condition_message_id: Optional[uuid.UUID] = None
+    condition_button_id: Optional[uuid.UUID] = None
+    buttons: list[MessageButtonOut] = Field(default_factory=list)
+    sent_count: int = 0
+
+
+class MessageButtonIn(BaseModel):
+    """A button; `id` of an existing one keeps it (and its clicks)."""
+    id: Optional[uuid.UUID] = None
+    text: str = Field(min_length=1, max_length=64)
+    url: Optional[str] = Field(default=None, max_length=1024)
+
+    @field_validator("text")
+    @classmethod
+    def _text(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Tugma matni bo'sh")
+        return value
+
+    @field_validator("url")
+    @classmethod
+    def _url(cls, value: Optional[str]) -> Optional[str]:
+        value = (value or "").strip()
+        if not value:
+            return None
+        if not _URL_RE.match(value):
+            raise ValueError("Havola http:// yoki https:// bilan boshlanishi kerak")
+        # Control / direction-override characters: invisible, and NUL breaks Postgres
+        if any(ord(c) < 0x20 or ord(c) == 0x7F or "\u202a" <= c <= "\u202e"
+               or "\u2066" <= c <= "\u2069" or c == "\\" for c in value):
+            raise ValueError("Havolada ruxsat etilmagan belgi bor")
+        parts = urlsplit(value)
+        if parts.scheme.lower() not in ("http", "https") or not parts.hostname:
+            raise ValueError("Havola http:// yoki https:// bilan boshlanishi kerak")
+        return value
 
 
 def _telegram_text(value: Optional[str]) -> Optional[str]:
@@ -127,6 +182,12 @@ class FunnelMessageIn(BaseModel):
     text: str = Field(min_length=1, max_length=TELEGRAM_TEXT_LIMIT)
     delay_minutes: int = Field(ge=0, le=MAX_DELAY_MINUTES)
     is_active: bool = True
+    buttons: list[MessageButtonIn] = Field(default_factory=list, max_length=MAX_BUTTONS)
+    show_book_button: bool = True
+    condition: MessageCondition = "none"
+    condition_message_id: Optional[uuid.UUID] = None
+    # None = any button of condition_message_id
+    condition_button_id: Optional[uuid.UUID] = None
 
     _text_fits = field_validator("text")(_telegram_text)
 
@@ -135,6 +196,13 @@ class FunnelMessagePatch(BaseModel):
     text: Optional[str] = Field(default=None, min_length=1, max_length=TELEGRAM_TEXT_LIMIT)
     delay_minutes: Optional[int] = Field(default=None, ge=0, le=MAX_DELAY_MINUTES)
     is_active: Optional[bool] = None
+    # Given = replaces the set (ids kept = same buttons)
+    buttons: Optional[list[MessageButtonIn]] = Field(default=None, max_length=MAX_BUTTONS)
+    show_book_button: Optional[bool] = None
+    # Given = sets the condition together with the two ids below (absent id = None)
+    condition: Optional[MessageCondition] = None
+    condition_message_id: Optional[uuid.UUID] = None
+    condition_button_id: Optional[uuid.UUID] = None
 
     _text_fits = field_validator("text")(_telegram_text)
 

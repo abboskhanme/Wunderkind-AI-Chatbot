@@ -8,12 +8,14 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
-from sqlalchemy import and_, case, func, or_, select
+from sqlalchemy import and_, case, delete, func, or_, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.deps import DB, CurrentUser, get_current_user, require_admin
 from app.leads import profiles
+from app.models.form import Form, FormSubmission
+from app.schemas.forms import LeadSourceOption
 from app.models.lead import CHANNELS, STATUS_LABELS, Lead, LeadMessage
 from app.models.profile import CustomerProfile
 from app.models.user import User
@@ -59,12 +61,33 @@ async def _counts(db: AsyncSession, ids: list[uuid.UUID]) -> dict[uuid.UUID, int
     return {r[0]: r[1] for r in rows}
 
 
-def _out(lead: Lead, names: dict, counts: dict, accounts: Optional[dict] = None) -> LeadOut:
+def _out(lead: Lead, names: dict, counts: dict, accounts: Optional[dict] = None,
+         forms: Optional[dict] = None) -> LeadOut:
     out = LeadOut.model_validate(lead)
     out.assigned_to_name = names.get(lead.assigned_to_id)
     out.message_count = counts.get(lead.id, 0)
     out.profile_name = (accounts or {}).get((lead.channel, lead.external_id))
+    out.form_name = (forms or {}).get(lead.form_id)
     return out
+
+
+async def _form_names(db: AsyncSession, leads: list[Lead]) -> dict[uuid.UUID, str]:
+    ids = {l.form_id for l in leads if l.form_id}
+    if not ids:
+        return {}
+    return dict((await db.execute(select(Form.id, Form.title).where(Form.id.in_(ids)))).all())
+
+
+def _source_filter(source: Optional[str]):
+    """`form:<uuid>` = leads of one form; anything else = the source value."""
+    if not source:
+        return None
+    if source.startswith("form:"):
+        try:
+            return Lead.form_id == uuid.UUID(source[len("form:"):])
+        except ValueError:
+            raise HTTPException(400, "Manba noto'g'ri") from None
+    return Lead.source == source
 
 
 def _profile_match(like: str):
@@ -77,10 +100,14 @@ def _profile_match(like: str):
 
 
 def _filtered(status: Optional[str], channel: Optional[str], search: Optional[str],
-              min_score: Optional[int], has_contact: Optional[bool]):
+              min_score: Optional[int], has_contact: Optional[bool],
+              source: Optional[str] = None):
     q = select(Lead)
     if status:
         q = q.where(Lead.status == status)
+    source_filter = _source_filter(source)
+    if source_filter is not None:
+        q = q.where(source_filter)
     if channel in CHANNELS:
         q = q.where(Lead.channel == channel)
     if search:
@@ -102,10 +129,10 @@ async def list_leads(
     db: DB,
     status: Optional[str] = None, channel: Optional[str] = None,
     search: Optional[str] = None, min_score: Optional[int] = Query(None, ge=0, le=100),
-    has_contact: Optional[bool] = None,
+    has_contact: Optional[bool] = None, source: Optional[str] = None,
     page: int = Query(1, ge=1), page_size: int = Query(50, ge=1, le=200),
 ):
-    q = _filtered(status, channel, search, min_score, has_contact)
+    q = _filtered(status, channel, search, min_score, has_contact, source)
     total = (await db.execute(select(func.count()).select_from(q.subquery()))).scalar() or 0
     leads = (await db.execute(
         q.order_by(func.coalesce(Lead.last_message_at, Lead.created_at).desc())
@@ -114,7 +141,8 @@ async def list_leads(
     names = await _names(db, [l.assigned_to_id for l in leads])
     counts = await _counts(db, [l.id for l in leads])
     accounts = await profiles.names(db, list(leads))
-    return LeadList(items=[_out(l, names, counts, accounts) for l in leads], total=total)
+    forms = await _form_names(db, list(leads))
+    return LeadList(items=[_out(l, names, counts, accounts, forms) for l in leads], total=total)
 
 
 @router.get("/export.csv")
@@ -122,30 +150,63 @@ async def export_csv(
     db: DB,
     status: Optional[str] = None, channel: Optional[str] = None,
     search: Optional[str] = None, min_score: Optional[int] = None,
-    has_contact: Optional[bool] = None,
+    has_contact: Optional[bool] = None, source: Optional[str] = None,
 ):
     leads = (await db.execute(
-        _filtered(status, channel, search, min_score, has_contact)
+        _filtered(status, channel, search, min_score, has_contact, source)
         .order_by(Lead.created_at.desc()).limit(10000)
     )).scalars().all()
     accounts = await profiles.names(db, list(leads))
+    forms = await _form_names(db, list(leads))
     buf = io.StringIO()
     writer = csv.writer(buf)
     writer.writerow(["Sana", "Kanal", "Username", "Ism", "Akkaunt nomi", "Telefon", "Qiziqish",
-                     "Yosh/sinf", "Qulay vaqt", "Holat", "Ball", "Xulosa", "Izoh"])
+                     "Yosh/sinf", "Qulay vaqt", "Holat", "Ball", "Xulosa", "Izoh", "Manba"])
     for l in leads:
         writer.writerow([_cell(v) for v in (
             _local(l.created_at), l.channel,
             l.username or "", l.name or "", accounts.get((l.channel, l.external_id), ""),
             l.contact or "", l.course_interest or "",
             l.student_age or "", l.preferred_time or "", STATUS_LABELS.get(l.status, l.status),
-            l.lead_score, l.summary or "", l.note or "",
+            l.lead_score, l.summary or "", l.note or "", _source_label(l, forms),
         )])
     # BOM so Excel opens UTF-8 (Cyrillic) correctly
     return Response(
         content="﻿" + buf.getvalue(), media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": 'attachment; filename="leads.csv"'},
     )
+
+
+SOURCE_LABELS = {
+    "instagram": "Instagram", "telegram": "Telegram", "instagram_import": "Instagram (import)",
+    "lead_magnet_instagram": "Qo'llanma (Instagram)",
+    "lead_magnet_telegram": "Qo'llanma (Telegram)", "form": "Forma",
+}
+
+
+def _source_label(lead: Lead, forms: dict) -> str:
+    if lead.form_id and lead.form_id in forms:
+        return f"Forma: {forms[lead.form_id]}"
+    return SOURCE_LABELS.get(lead.source, lead.source or "")
+
+
+@router.get("/sources", response_model=list[LeadSourceOption])
+async def lead_sources(db: DB):
+    """Options of the «Manba» filter: every lead source in use, and every form."""
+    rows = (await db.execute(
+        select(Lead.source, func.count()).where(Lead.form_id.is_(None))
+        .group_by(Lead.source).order_by(func.count().desc())
+    )).all()
+    options = [LeadSourceOption(value=src, label=SOURCE_LABELS.get(src, src), count=n)
+               for src, n in rows if src]
+    counts = dict((await db.execute(
+        select(Lead.form_id, func.count()).where(Lead.form_id.is_not(None))
+        .group_by(Lead.form_id))).all())
+    for form_id, title in (await db.execute(
+            select(Form.id, Form.title).order_by(Form.sort_order, Form.created_at.desc()))).all():
+        options.append(LeadSourceOption(value=f"form:{form_id}", label=f"Forma: {title}",
+                                        count=int(counts.get(form_id, 0))))
+    return options
 
 
 def _cell(value: object) -> object:
@@ -255,7 +316,8 @@ async def get_lead(lead_id: uuid.UUID, db: DB):
     )).scalars().all()
     names = await _names(db, [lead.assigned_to_id])
     profile = await profiles.get(db, lead.channel, lead.external_id)
-    out = _out(lead, names, {lead.id: sum(m.kind in _CHAT_KINDS for m in msgs)})
+    out = _out(lead, names, {lead.id: sum(m.kind in _CHAT_KINDS for m in msgs)},
+               forms=await _form_names(db, [lead]))
     out.profile_name = profile.full_name if profile else None
     detail = LeadDetail.model_validate({
         **out.model_dump(),
@@ -320,12 +382,15 @@ async def update_lead(lead_id: uuid.UUID, payload: LeadUpdate, db: DB, user: Cur
         raise HTTPException(400, "Bu mijozning boshqa ochiq leadi bor — avval uni yoping") from None
     await db.refresh(lead)
     names = await _names(db, [lead.assigned_to_id])
-    return _out(lead, names, await _counts(db, [lead.id]))
+    return _out(lead, names, await _counts(db, [lead.id]), forms=await _form_names(db, [lead]))
 
 
 @router.delete("/{lead_id}", status_code=204, dependencies=[Depends(require_admin)])
 async def delete_lead(lead_id: uuid.UUID, db: DB):
-    await db.delete(await _get(db, lead_id))
+    lead = await _get(db, lead_id)
+    # Its form answers hold the same personal data (the FK would only unlink them)
+    await db.execute(delete(FormSubmission).where(FormSubmission.lead_id == lead.id))
+    await db.delete(lead)
     await db.commit()
     return Response(status_code=204)
 
