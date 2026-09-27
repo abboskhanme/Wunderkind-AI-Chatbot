@@ -31,6 +31,7 @@ from app.telegram import notifier
 MAX_FOLLOW_CHECKS = 5
 # A button template comes back as an attachment echo with this placeholder text
 _TEMPLATE_ECHO = _attachment_text([{"type": "template"}])
+_TEMPLATE_TEXT_MAX = 640              # Meta rejects a longer button-template text
 _COMMENT_WINDOW = 600
 
 
@@ -292,8 +293,11 @@ async def _send_quick(igsid: str, recipient: dict, text: str) -> bool:
 async def _send_link(igsid: str, recipient: dict, token: str, funnel: FunnelView, *,
                      style: str = "button") -> bool:
     """FUNNEL_IG_LINK_MESSAGE with a «📘 Qo'llanmani olish» button (web_url to the
-    bot). `style="text"` — the link as plain text instead: sent when the person
-    asks again (the button did not work for them; instagram.com shows no buttons).
+    bot), and the link as plain text for people on a computer: instagram.com
+    shows the button message's text but not the button. In a DM the link follows
+    as its own message (a plain-text URL is clickable everywhere); a private reply
+    allows only one message, so there the link goes into the button text.
+    `style="text"` — the link as plain text only: sent when the person asks again.
     A rejected button template also falls back to plain text."""
     url = await repo.ig_link(token)
     if not url:
@@ -304,12 +308,18 @@ async def _send_link(igsid: str, recipient: dict, token: str, funnel: FunnelView
         return False
     text = funnel.text("FUNNEL_IG_LINK_MESSAGE").strip()
     plain = f"{text}\n\n{url}"
+    private_reply = "comment_id" in recipient
+    button_text = plain if private_reply else text
     result: dict = {}
-    if style == "button":
-        await store.mark_sent(igsid, text)
+    if style == "button" and len(button_text) <= _TEMPLATE_TEXT_MAX:
+        await store.mark_sent(igsid, button_text)
         await store.mark_sent(igsid, _TEMPLATE_ECHO)
         result = await instagram.send_button_template(
-            recipient, text, [{"type": "web_url", "url": url, "title": texts.LINK_BUTTON}])
+            recipient, button_text,
+            [{"type": "web_url", "url": url, "title": texts.LINK_BUTTON}])
+        if result.get("sent") and not private_reply:
+            await store.mark_sent(igsid, url)
+            await instagram.send_message_to(recipient, {"text": url})
     if not result.get("sent"):
         await store.mark_sent(igsid, plain)
         result = await instagram.send_message_to(recipient, {"text": plain})

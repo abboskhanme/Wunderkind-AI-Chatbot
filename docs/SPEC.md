@@ -295,7 +295,10 @@ Details:
   `FUNNEL_IG_REQUIRE_FOLLOW=yo'q` skips the gate.
 - **Link**: `https://t.me/<bot_username>?start=<token>`; token = 12 random
   url-safe chars stored on the entry. Sent as a button template (web_url) with a
-  plain-text fallback.
+  plain-text fallback. Computers (Instagram desktop app, instagram.com) show no
+  buttons, so the link is always also sent as plain text: in a DM a second
+  message with the bare URL; in a comment private reply (one message only) the
+  URL is appended to the button text; a button text > 640 chars → plain text only.
 - **TG channel comments**: updates from supergroup/group chats whose id equals
   `FUNNEL_TG_DISCUSSION_CHAT_ID` (or any group if empty) and whose text matches
   a keyword → `sendMessage(reply_to_message_id=…)` with `FUNNEL_TG_COMMENT_REPLY`

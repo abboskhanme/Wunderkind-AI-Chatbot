@@ -147,6 +147,10 @@ Bu qadamlar AI emas — matnlari oldindan yozilgan va o'zgarmaydi.
 - Ism/telefon/sinf so'ralayotganda mijoz savol bersa («?» bilan) yoki ikki marta
   noto'g'ri javob yozsa, unga AI javob beradi; to'g'ri javob yozgach savollar davom etadi.
 - Instagram'da siz o'zingiz yozgan (AI to'xtatilgan) suhbatga voronka aralashmaydi.
+- Instagram tugmalari faqat telefondagi Instagram ilovasida ko'rinadi. Kompyuterdan
+  (Instagram ilovasi yoki brauzer) yozgan mijoz uchun qo'llanma havolasi tugmadan
+  keyin alohida xabar bo'lib ham keladi, shuning uchun telefonda tugma ostida havola
+  ham ko'rinadi.
 - Qo'llanmani yuborishda Telegram xato bersa, tizim o'zi qayta urinadi va sizga
   bildirishnoma keladi.
 

@@ -73,7 +73,12 @@ def test_follow_true_sends_link_button(database, ig):
     assert template["recipient"] == {"id": "u1"}
     assert template["buttons"] == [{"type": "web_url", "title": texts.LINK_BUTTON,
                                     "url": f"https://t.me/wk_bot?start={token}"}]
-    assert ig.of("send") == []               # the button only — no extra link text
+    assert template["text"] == settings.FUNNEL_IG_LINK_MESSAGE.strip()
+    # instagram.com (computer) shows no buttons — the link follows as plain text
+    (link,) = ig.of("send")
+    assert link["recipient"] == {"id": "u1"}
+    assert link["message"]["text"] == f"https://t.me/wk_bot?start={token}"
+    assert run(store.was_sent_by_bot("u1", link["message"]["text"]))
     found = entry(database)
     assert found.step == "ig_link_sent" and found.link_sent_at and found.followed_at
     assert found.follow_checks == 1
@@ -112,6 +117,24 @@ def test_comment_from_follower_gets_link_directly(database, ig):
     assert ig.of("quick") == [] and ig.of("send") == []
     (template,) = ig.of("template")
     assert "comment_id" in template["recipient"]
+    # A private reply is one message only: the link for computers is in its text
+    token = entry(database).start_token
+    assert template["text"] == (settings.FUNNEL_IG_LINK_MESSAGE.strip()
+                                + f"\n\nhttps://t.me/wk_bot?start={token}")
+    assert run(store.was_sent_by_bot("u1", template["text"]))
+    assert entry(database).step == "ig_link_sent"
+
+
+def test_too_long_private_reply_goes_as_plain_text(database, ig, monkeypatch):
+    """Meta rejects a button text over 640 chars — and a private reply has one try."""
+    monkeypatch.setattr(settings, "FUNNEL_IG_LINK_MESSAGE", "Rahmat! " * 80)
+    ig.profile = {"is_user_follow_business": True}
+    handle(comment())
+    assert ig.of("template") == []
+    (plain,) = ig.of("send")
+    assert "comment_id" in plain["recipient"]
+    assert plain["message"]["text"].endswith(
+        f"https://t.me/wk_bot?start={entry(database).start_token}")
     assert entry(database).step == "ig_link_sent"
 
 
