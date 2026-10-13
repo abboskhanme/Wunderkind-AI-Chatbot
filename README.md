@@ -40,6 +40,36 @@ Public legal pages and Meta callbacks (for going Live / App Review): `/privacy`,
 `/data-deletion`, `POST /connect/data-deletion`, `POST /connect/deauthorize` — see
 `docs/META_APP_REVIEW.md`.
 
+## Second brand on the same server
+
+`docker-compose.brand2.yml` runs a second, fully separate copy of the agent for another
+center: same code, its **own empty database**, Redis, admin user, AI/Instagram/Telegram
+settings and domain. The main stack's Caddy (ports 80/443) forwards `BRAND2_DOMAIN` to
+`brand2-web`; nothing else is shared.
+
+First install (in the repo directory on the server, main stack already running):
+
+```bash
+# 1) DNS: A record for the subdomain -> this server. Then in the MAIN .env:
+echo 'BRAND2_DOMAIN=agent.markaz.uz' >> .env
+docker compose -p wkagent up -d --build             # Caddy picks up the new domain
+
+# 2) Brand settings + fresh secrets (PUBLIC_URL=https://<BRAND2_DOMAIN>)
+cp .env.brand2.example .env.brand2 && nano .env.brand2
+
+# 3) Start — the empty database is built on the first start
+docker compose -f docker-compose.brand2.yml --env-file .env.brand2 up -d --build
+```
+
+Log in at `https://<BRAND2_DOMAIN>` with `ADMIN_USERNAME` / `ADMIN_PASSWORD` from
+`.env.brand2`, then configure it like the main one (below). Instagram needs its **own
+Meta app**: a Meta app has one webhook URL, and the main one points at the main domain.
+
+After every code update, rebuild brand2 as well:
+`docker compose -f docker-compose.brand2.yml --env-file .env.brand2 up -d --build`
+
+Backup: `docker compose -p brand2-agent exec -T brand2-db pg_dump -U brand2 brand2_agent | gzip > /opt/backups/brand2-$(date +%F-%H%M).sql.gz`
+
 ## Configure (admin panel → Sozlamalar)
 
 1. **AI** — Gemini API key (default provider). Claude is an optional fallback.

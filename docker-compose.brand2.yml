@@ -1,0 +1,112 @@
+# Second brand: the same code with its OWN empty database, Redis, admin and domain,
+# on the same server as the main instance (compose project "wkagent").
+# The main instance's Caddy owns ports 80/443 and forwards BRAND2_DOMAIN (its .env)
+# to brand2-web; brand2-web serves this brand's panel and proxies brand2-backend.
+#
+#   docker compose -f docker-compose.brand2.yml --env-file .env.brand2 up -d --build
+#
+# The main stack must already be running (its network "wkagent_default" is joined).
+# The first admin is created from ADMIN_USERNAME / ADMIN_PASSWORD in .env.brand2.
+#
+# Isolation: every service is prefixed "brand2-" and only brand2-web joins the main
+# network. A plain name there (db, redis, backend) would resolve to the MAIN
+# instance's containers and could point this brand at its data.
+name: brand2-agent
+
+services:
+  brand2-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: brand2
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.brand2}
+      POSTGRES_DB: brand2_agent
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U brand2 -d brand2_agent"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  brand2-redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+
+  brand2-backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env.brand2
+    environment:
+      DATABASE_URL: postgresql+asyncpg://brand2:${POSTGRES_PASSWORD}@brand2-db:5432/brand2_agent
+      REDIS_URL: redis://brand2-redis:6379/0
+      COMPANY_NAME: ${BRAND_NAME:?set BRAND_NAME in .env.brand2}
+      FUNNEL_KEYWORDS: ${BRAND_KEYWORDS:-${BRAND_NAME}}
+      # Default funnel texts without Wunderkind's name and its guide's title
+      # (the panel can change them; these are only the starting values)
+      FUNNEL_IG_DM_WELCOME: |-
+        Assalomu alaykum! 😊 Qiziqishingiz uchun rahmat!
+
+        Bepul qo'llanmamizni Sizga sovg'a qilamiz 🎁
+
+        Buning uchun sahifamizga obuna bo'ling, so'ng pastdagi «✅ Obuna bo'ldim» tugmasini bosing (yoki «tayyor» deb yozing).
+      FUNNEL_BOT_WELCOME: |-
+        Assalomu alaykum, xush kelibsiz! 😊
+
+        Bepul qo'llanmamizni hozir yuboramiz. Faqat 3 ta qisqa savolga javob bering 👇
+      FUNNEL_PDF_CAPTION: |-
+        🎁 Mana, Sizning qo'llanmangiz!
+
+        Qabul davom etmoqda. Farzandingiz uchun bepul tanishuv suhbatiga yozilish uchun pastdagi tugmani bosing 👇
+      FUNNEL_REMINDER_TEXT: |-
+        🔔 Assalomu alaykum, {name}!
+
+        Eslatib o'tamiz: bugun soat {time} da tanishuv suhbatingiz bor.
+
+        📍 Manzil: {address}
+        👤 Mas'ul xodim: {staff_name}
+        📞 Telefon: {staff_phone}
+
+        Kela olmasangiz, iltimos, vaqtni o'zgartiring yoki bekor qiling. Kutib qolamiz! 😊
+    # prepare_db = alembic upgrade head + on a brand-new database it drops the
+    # Wunderkind placeholder sales messages that a migration seeds
+    command: >-
+      sh -c "python -m scripts.prepare_db &&
+      uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 1
+      --proxy-headers --forwarded-allow-ips='*'"
+    depends_on:
+      brand2-db:
+        condition: service_healthy
+      brand2-redis:
+        condition: service_started
+
+  brand2-web:
+    build:
+      context: ./frontend
+      args:
+        VITE_BRAND_NAME: ${BRAND_NAME:?set BRAND_NAME in .env.brand2}
+        VITE_BRAND_APP_NAME: ${BRAND_APP_NAME:-}
+    restart: unless-stopped
+    environment:
+      # Plain HTTP inside Docker; the main Caddy terminates TLS for BRAND2_DOMAIN
+      SITE_ADDRESS: ":80"
+      BACKEND_UPSTREAM: brand2-backend:8000
+      TRUSTED_PROXIES: private_ranges
+    depends_on:
+      - brand2-backend
+    networks:
+      - default
+      - main
+
+networks:
+  # The main instance's network — only so its Caddy can reach brand2-web
+  main:
+    external: true
+    name: wkagent_default
+
+volumes:
+  db_data:
+  redis_data:

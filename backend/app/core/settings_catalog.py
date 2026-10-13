@@ -8,6 +8,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from app.config import Settings
+
+# Examples in placeholders follow the brand set in the environment (a second brand
+# runs from the same code — docker-compose.brand2.yml), not the panel value.
+_ENV = Settings()
+_BRAND = _ENV.COMPANY_NAME or "Wunderkind"
+
 
 @dataclass(frozen=True)
 class SettingItem:
@@ -63,7 +70,7 @@ CATALOG: tuple[SettingItem, ...] = (
     SettingItem(
         "KB_COMPANY", "Maktab haqida", "knowledge", type="textarea",
         placeholder=(
-            "Wunderkind — xususiy maktab (1–11-sinflar), 20..-yildan beri.\n"
+            f"{_BRAND} — xususiy maktab (1–11-sinflar), 20..-yildan beri.\n"
             "Manzil: ... (mo'ljal: ...).\n"
             "Ish vaqti: Du–Sha 8:00–18:00.\nTelefon: +998 ...\nTelegram: @..."
         ),
@@ -169,7 +176,7 @@ CATALOG: tuple[SettingItem, ...] = (
                 type="number", placeholder="100"),
 
     # --- General --------------------------------------------------------------
-    SettingItem("COMPANY_NAME", "Maktab nomi", "general", placeholder="Wunderkind"),
+    SettingItem("COMPANY_NAME", "Maktab nomi", "general", placeholder=_BRAND),
     SettingItem("TIMEZONE", "Vaqt mintaqasi", "general", placeholder="Asia/Tashkent"),
 
     # --- Legal pages: /privacy, /terms, /data-deletion (SPEC §12.3) ------------
@@ -194,7 +201,7 @@ CATALOG: tuple[SettingItem, ...] = (
                 help="«yo'q» — yangi izoh/start qabul qilinmaydi va sotuv xabarlari to'xtaydi. "
                      "Boshlangan ro'yxatdan o'tish, suhbatga yozilish va eslatmalar ishlayveradi."),
     SettingItem("FUNNEL_KEYWORDS", "Kalit so'zlar", "funnel",
-                placeholder="wunderkind, вундеркинд",
+                placeholder=_ENV.FUNNEL_KEYWORDS,
                 help="Vergul bilan. Katta-kichik harf, lotin/kirill farqi hisobga olinmaydi."),
     SettingItem("FUNNEL_IG_REQUIRE_FOLLOW", "Instagram: obunani tekshirish", "funnel",
                 type="select", options=YES_NO,
@@ -223,7 +230,7 @@ CATALOG: tuple[SettingItem, ...] = (
                 type="textarea",
                 help="Ostida Telegram botga havola tugmasi chiqadi. 640 belgigacha."),
     SettingItem("FUNNEL_TG_CHANNEL", "Telegram kanal", "funnel",
-                placeholder="@wunderkind_kanal",
+                placeholder="@kanal_nomi",
                 help="@username yoki -100… ID. Bot kanalda administrator bo'lishi kerak."),
     SettingItem("FUNNEL_TG_REQUIRE_CHANNEL", "Telegram: kanalga obunani tekshirish", "funnel",
                 type="select", options=YES_NO,

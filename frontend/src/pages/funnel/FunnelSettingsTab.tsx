@@ -8,6 +8,7 @@ import { funnelApi, FUNNEL_TEXT_KEYS, leadMagnetDownloadUrl } from '@/api/funnel
 import { downloadFile, errorMessage } from '@/api/client'
 import type { FunnelOut, FunnelPatch, SettingItem } from '@/api/types'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label, Loading, Textarea, Toggle } from '@/components/ui'
+import { BRAND } from '@/lib/brand'
 import { fmtBytes, fmtDateTime } from '@/lib/format'
 import { CopyRow, ErrorState, FUNNELS_KEY, type FunnelTabProps } from './shared'
 
@@ -167,7 +168,7 @@ function MainCard({ funnel, funnels, globalKeywords, selectFunnel }: {
           <Input
             value={form.keywords}
             onChange={(e) => setForm((f) => ({ ...f, keywords: e.target.value }))}
-            placeholder={funnel.is_default ? globalKeywords || 'wunderkind, вундеркинд' : 'Masalan: qabul, 1-sinf'}
+            placeholder={funnel.is_default ? globalKeywords || BRAND.name.toLowerCase() : 'Masalan: qabul, 1-sinf'}
           />
           <p className="mt-1 text-xs text-gray-500">
             {funnel.is_default

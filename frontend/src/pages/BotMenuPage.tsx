@@ -7,6 +7,7 @@ import { errorMessage } from '@/api/client'
 import type { MenuItem, MenuItemInput } from '@/api/types'
 import { Badge, Button, Card, CardHeader, Empty, Input, Label, Loading, Modal, PageHeader, Textarea, Toggle } from '@/components/ui'
 import { AuthImage } from '@/components/AuthImage'
+import { BRAND } from '@/lib/brand'
 
 const COMMAND_RE = /^[a-z0-9_]{1,32}$/
 const MAX_IMAGES = 10
@@ -184,7 +185,7 @@ export default function BotMenuPage() {
               action={<Button size="sm" icon={<Save className="h-3.5 w-3.5" />} disabled={greeting === data.greeting} loading={saveGreeting.isPending} onClick={() => saveGreeting.mutate()}>Saqlash</Button>}
             />
             <div className="p-5">
-              <Textarea rows={4} value={greeting} onChange={(e) => setGreeting(e.target.value)} placeholder="Assalomu alaykum! 👋 Wunderkind maktabiga xush kelibsiz. Quyidagi bo'limlardan birini tanlang yoki savolingizni yozing." />
+              <Textarea rows={4} value={greeting} onChange={(e) => setGreeting(e.target.value)} placeholder={`Assalomu alaykum! 👋 ${BRAND.name} maktabiga xush kelibsiz. Quyidagi bo'limlardan birini tanlang yoki savolingizni yozing.`} />
             </div>
           </Card>
 

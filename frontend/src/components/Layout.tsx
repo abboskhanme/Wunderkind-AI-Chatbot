@@ -6,6 +6,7 @@ import {
 } from 'lucide-react'
 import { isAdmin, useAuth } from '@/lib/auth'
 import { USER_ROLE_LABELS } from '@/lib/labels'
+import { BRAND } from '@/lib/brand'
 import { cn } from '@/lib/cn'
 
 interface NavItem {
@@ -34,9 +35,9 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   return (
     <div className="flex h-full flex-col bg-white">
       <div className="flex items-center gap-2.5 px-5 py-5">
-        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-sm font-bold text-white">W</div>
+        <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-brand-600 text-sm font-bold text-white">{BRAND.initial}</div>
         <div>
-          <p className="text-sm font-semibold text-gray-900">Wunderkind</p>
+          <p className="text-sm font-semibold text-gray-900">{BRAND.name}</p>
           <p className="text-xs text-gray-500">AI sotuv agenti</p>
         </div>
       </div>
@@ -103,7 +104,7 @@ export function Layout() {
           <button onClick={() => setOpen(true)} className="rounded-lg p-1.5 text-gray-600 hover:bg-gray-100">
             <Menu className="h-5 w-5" />
           </button>
-          <span className="text-sm font-semibold text-gray-900">Wunderkind AI Agent</span>
+          <span className="text-sm font-semibold text-gray-900">{BRAND.appName}</span>
         </header>
         <main className={cn('min-h-0 flex-1', fullBleed ? 'overflow-hidden' : 'overflow-y-auto')}>
           {fullBleed ? (

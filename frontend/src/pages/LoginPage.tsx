@@ -4,6 +4,7 @@ import toast from 'react-hot-toast'
 import { errorMessage } from '@/api/client'
 import { Button, Input, Label } from '@/components/ui'
 import { useAuth } from '@/lib/auth'
+import { BRAND } from '@/lib/brand'
 
 export default function LoginPage() {
   const { user, login } = useAuth()
@@ -31,8 +32,8 @@ export default function LoginPage() {
     <div className="flex min-h-full items-center justify-center bg-gradient-to-br from-brand-50 via-white to-violet-50 px-4">
       <div className="w-full max-w-sm">
         <div className="mb-8 text-center">
-          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-lg font-bold text-white">W</div>
-          <h1 className="text-xl font-semibold text-gray-900">Wunderkind AI Agent</h1>
+          <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-600 text-lg font-bold text-white">{BRAND.initial}</div>
+          <h1 className="text-xl font-semibold text-gray-900">{BRAND.appName}</h1>
           <p className="mt-1 text-sm text-gray-500">Boshqaruv paneliga kirish</p>
         </div>
         <form onSubmit={submit} className="space-y-4 rounded-2xl bg-white p-6 shadow-sm ring-1 ring-gray-200">

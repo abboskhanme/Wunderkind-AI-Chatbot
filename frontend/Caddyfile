@@ -1,3 +1,13 @@
+# X-Forwarded-* are kept only from TRUSTED_PROXIES. The main instance trusts nobody
+# (default). The second brand (docker-compose.brand2.yml) sits behind the main Caddy
+# on a private Docker network and sets "private_ranges", so the client IP and https
+# scheme the main Caddy saw still reach its backend.
+{
+	servers {
+		trusted_proxies static {$TRUSTED_PROXIES:127.0.0.1/32}
+	}
+}
+
 # SITE_ADDRESS: ":80" locally; a domain in production (Caddy then gets HTTPS itself)
 {$SITE_ADDRESS::80} {
 	encode gzip
@@ -11,9 +21,11 @@
 		max_size 256KB
 	}
 
+	# BACKEND_UPSTREAM: the second brand points this at brand2-backend — a bare
+	# "backend" would resolve to the main instance on the shared network
 	@backend path /api/* /webhook/* /connect/* /health /privacy /terms /data-deletion /go/* /f/*
 	handle @backend {
-		reverse_proxy backend:8000
+		reverse_proxy {$BACKEND_UPSTREAM:backend:8000}
 	}
 
 	handle {
@@ -21,4 +33,13 @@
 		try_files {path} /index.html
 		file_server
 	}
+}
+
+# Second brand (docker-compose.brand2.yml): same code, own database, own domain,
+# served through this Caddy (it owns ports 80/443). brand2-web serves that brand's
+# panel and proxies its backend, so one line is enough here. BRAND2_DOMAIN comes from
+# .env via docker-compose.yml; unset → an address that never matches, and "http://"
+# means no certificate is requested for it.
+{$BRAND2_DOMAIN:http://brand2.invalid} {
+	reverse_proxy brand2-web:80
 }

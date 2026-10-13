@@ -4,6 +4,9 @@ WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN npm ci || npm install
 COPY . .
+# Brand shown in the panel; empty -> Wunderkind (defaults in vite.config.ts)
+ARG VITE_BRAND_NAME=
+ARG VITE_BRAND_APP_NAME=
 RUN npm run build
 
 FROM caddy:2-alpine
